@@ -1,0 +1,15 @@
+[package]
+name = "lunalign"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "lunalign"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lunalign-cli"
+path = "src/cli/main.rs"
+
+
+[dependencies]
