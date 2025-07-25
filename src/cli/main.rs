@@ -1,5 +1,6 @@
 use lunalign;
 
-fn main() {
+fn main() -> Result<()> {
 
+	Ok(())
 }

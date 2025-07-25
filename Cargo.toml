@@ -13,3 +13,5 @@ path = "src/cli/main.rs"
 
 
 [dependencies]
+opencv = "0.95.0"
+fitsio = "0.21.7"
