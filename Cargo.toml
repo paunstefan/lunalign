@@ -14,5 +14,8 @@ path = "src/cli/main.rs"
 
 [dependencies]
 anyhow = "1.0"
+clap_derive = "4.5.41"
+clap = { version = "4.5.43", features = ["derive"] }
+ndarray ="0.16"
 opencv = "0.95.0"
 fitsio = "0.21.7"
