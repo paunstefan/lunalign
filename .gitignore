@@ -1,3 +1,5 @@
-/target
-/testdata
-/process
+./build
+
+lunalign
+
+fits_out
