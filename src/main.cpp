@@ -1,28 +1,35 @@
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <string>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
 
-#include "ser.hpp"
+#include "commands.hpp"
 
-namespace fs = std::filesystem;
+const char *helpstring = "Usage: lunalign <commands>/<script_file>";
 
-int main(int argc, char* argv[]) {
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <input.ser> <output_directory>" << std::endl;
+struct Config {
+    std::string input_file;
+
+};
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        std::cerr << helpstring << "\n";
         return 1;
     }
 
-    try {
-        fs::path input_file = argv[1];
-        fs::path output_dir = argv[2];
-        SerFile::decode_to_dir(input_file, output_dir);
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
+    std::string arg = argv[1];
+
+    if(arg == "-h" || arg == "--help"){
+        std::cout << helpstring << std::endl;
+        return 0;
     }
+
+    process_commands(arg);
 
     return 0;
 }

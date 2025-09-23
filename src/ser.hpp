@@ -11,8 +11,6 @@ struct SerHeader {
     int32_t height;
     int32_t pixel_depth;
     int32_t frame_count;
-
-    void decode_to_dir(const char *input, const char *output);
 };
 
 class SerFile {
