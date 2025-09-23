@@ -1,5 +1,5 @@
-./build
-
+build
 lunalign
-
 fits_out
+compile_commands.json
+*.cache
