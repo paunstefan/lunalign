@@ -1,4 +1,6 @@
-#include <vector>
+#pragma once
+#include "result.hpp"
 #include <string>
+#include <unordered_map>
 
-void run_debayer(std::vector<std::string> args);
+la_result run_debayer(std::unordered_map<std::string, std::string>& args);

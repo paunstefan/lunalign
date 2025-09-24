@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 3.10)
 
 project(lunalign CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+# set(CMAKE_C_COMPILER clang-19)
+# set(CMAKE_CXX_COMPILER clang++-19)
+
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -21,5 +24,10 @@ target_link_libraries(lunalign PRIVATE
     rtprocess
     z
 )
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(lunalign PRIVATE "-stdlib=libc++")
+    target_link_options(lunalign PRIVATE "-stdlib=libc++")
+endif()
 
 message(STATUS "CMake configuration complete. You can now build with 'make'.")

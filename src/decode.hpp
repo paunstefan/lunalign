@@ -1,4 +1,7 @@
-#include <vector>
-#include <string>
+#pragma once
 
-void run_decode(std::vector<std::string> args);
+#include "result.hpp"
+#include <string>
+#include <unordered_map>
+
+la_result run_decode(std::unordered_map<std::string, std::string>& args);

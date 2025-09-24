@@ -1,9 +1,12 @@
-#include <string>
+#pragma once
+
+#include "result.hpp"
 #include <cstdint>
 #include <filesystem>
+#include <string>
 
-
-struct SerHeader {
+struct SerHeader
+{
     std::string name;
     int32_t color;
     int32_t endianess;
@@ -13,7 +16,8 @@ struct SerHeader {
     int32_t frame_count;
 };
 
-class SerFile {
-public:
-    static void decode_to_dir(const std::filesystem::path& input_path, const std::filesystem::path& output_dir);
+class SerFile
+{
+  public:
+    static la_result decode_to_dir(const std::filesystem::path &input_path, const std::filesystem::path &output_dir);
 };
