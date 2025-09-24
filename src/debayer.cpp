@@ -1,8 +1,8 @@
+#include "debayer.hpp"
+#include "result.hpp"
 #include <librtprocess.h>
 
-#include "debayer.hpp"
-
-
-void run_debayer(std::vector<std::string> args){
-    
+la_result run_debayer(std::unordered_map<std::string, std::string>& args)
+{
+    return la_result::Ok;
 }

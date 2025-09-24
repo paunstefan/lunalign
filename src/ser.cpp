@@ -1,24 +1,28 @@
 #include "ser.hpp"
 
 #include "fitsio.h"
+#include "result.hpp"
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <stdexcept>
+#include <print>
+#include <sstream>
 #include <string>
 #include <vector>
 
 namespace fs = std::filesystem;
 
-void check_fits_status(int status)
+la_result check_fits_status(int status)
 {
     if (status)
     {
         fits_report_error(stderr, status);
-        throw std::runtime_error("CFITSIO error occurred.");
+        std::println(std::cerr, "CFITSIO error occurred.");
+        return la_result::Error;
     }
+    return la_result::Ok;
 }
 
 int32_t read_le_i32(const std::vector<uint8_t> &buffer, size_t offset)
@@ -28,12 +32,13 @@ int32_t read_le_i32(const std::vector<uint8_t> &buffer, size_t offset)
         (static_cast<uint32_t>(buffer[offset + 2]) << 16) | (static_cast<uint32_t>(buffer[offset + 3]) << 24));
 }
 
-void SerFile::decode_to_dir(const fs::path &input_path, const fs::path &output_dir)
+la_result SerFile::decode_to_dir(const fs::path &input_path, const fs::path &output_dir)
 {
     std::ifstream file(input_path, std::ios::binary);
     if (!file)
     {
-        throw std::runtime_error("Failed to open input file: " + input_path.string());
+        std::println("Failed to open input file: {}", input_path.string());
+        return la_result::Error;
     }
 
     std::vector<uint8_t> header_buffer(178);
@@ -48,10 +53,10 @@ void SerFile::decode_to_dir(const fs::path &input_path, const fs::path &output_d
     header.pixel_depth = read_le_i32(header_buffer, 34);
     header.frame_count = read_le_i32(header_buffer, 38);
 
-    std::cout << "SER Header Parsed:\n"
-              << "  - Dimensions: " << header.width << "x" << header.height << "\n"
-              << "  - Pixel Depth: " << header.pixel_depth << " bits\n"
-              << "  - Frame Count: " << header.frame_count << "\n";
+    std::println("SER Header Parsed:");
+    std::println("  - Dimensions: {}x{}", header.width, header.height);
+    std::println("  - Pixel Depth: {} bits", header.pixel_depth);
+    std::println("  - Frame Count: {}", header.frame_count);
 
     size_t pixels_per_frame = header.width * header.height;
     size_t bytes_per_pixel = header.pixel_depth / 8;
@@ -69,8 +74,10 @@ void SerFile::decode_to_dir(const fs::path &input_path, const fs::path &output_d
     case 32:
         fits_image_type = ULONG_IMG;
         break;
-    default:
-        throw std::runtime_error("Unsupported pixel depth: " + std::to_string(header.pixel_depth));
+    default: {
+        std::println("Unsupported pixel depth: {}", header.pixel_depth);
+        return la_result::Error;
+    }
     }
 
     fs::create_directories(output_dir);
@@ -78,12 +85,13 @@ void SerFile::decode_to_dir(const fs::path &input_path, const fs::path &output_d
     std::vector<uint8_t> frame_buffer(frame_size_bytes);
     for (int32_t i = 0; i < header.frame_count; ++i)
     {
-        std::cout << "Processing frame " << (i + 1) << "/" << header.frame_count << std::endl;
+        std::println("Processing frame {}/{}", i + 1, header.frame_count);
 
         file.read(reinterpret_cast<char *>(frame_buffer.data()), frame_size_bytes);
         if (file.gcount() != frame_size_bytes)
         {
-            throw std::runtime_error("Failed to read full frame data for frame " + std::to_string(i));
+            std::println("Failed to read full frame data for frame ", i);
+            return la_result::Error;
         }
 
         std::ostringstream oss;
@@ -136,6 +144,6 @@ void SerFile::decode_to_dir(const fs::path &input_path, const fs::path &output_d
         check_fits_status(status);
     }
 
-    std::cout << "\nConversion complete! " << header.frame_count << " FITS files written to '" << output_dir.string()
-              << "'." << std::endl;
+    std::println("\nConversion complete! {} FITS files written to '{}'.", header.frame_count, output_dir.string());
+    return la_result::Ok;
 }

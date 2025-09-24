@@ -1,35 +1,48 @@
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <string>
-#include <vector>
+#include <utility>
 
 #include "commands.hpp"
+#include "result.hpp"
 
 const char *helpstring = "Usage: lunalign <commands>/<script_file>";
 
-struct Config {
-    std::string input_file;
-
-};
-
-int main(int argc, char *argv[])
+int main(int argc, const char *argv[])
 {
     if (argc != 2)
     {
-        std::cerr << helpstring << "\n";
+        std::println("{}", helpstring);
         return 1;
     }
 
     std::string arg = argv[1];
 
-    if(arg == "-h" || arg == "--help"){
-        std::cout << helpstring << std::endl;
+    if (arg == "-h" || arg == "--help")
+    {
+        std::println("{}", helpstring);
         return 0;
     }
 
-    process_commands(arg);
+    la_result result = la_result::Error;
+    if (std::filesystem::is_regular_file(arg))
+    {
+        std::ifstream file(arg);
+        const auto file_size = std::filesystem::file_size(arg);
+        if (!file.is_open())
+        {
+            std::println("Error: Could not open file: {}", arg);
+            return -1;
+        }
+        std::string content(file_size, '\0');
+        file.read(content.data(), file_size);
+        result = process_commands(content);
+    }
+    else
+    {
+        result = process_commands(arg);
+    }
 
-    return 0;
+    return std::to_underlying(result);
 }

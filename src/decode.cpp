@@ -1,27 +1,34 @@
 #include <filesystem>
 #include <iostream>
+#include <print>
 
 #include "decode.hpp"
+#include "result.hpp"
 #include "ser.hpp"
 
 namespace fs = std::filesystem;
 
-void run_decode(std::vector<std::string> args)
+la_result run_decode(std::unordered_map<std::string, std::string>& args)
 {
-    fs::path input_file = args[0];
+    if (!args.contains("in"))
+    {
+        std::println("Error: Required argument 'in' for 'decode' not present!");
+        return la_result::Error;
+    }
+    fs::path input_file = args["in"];
+
     fs::path output_dir = "fits_out";
-    if(input_file.extension() != ".ser"){
-        std::cerr << "Error: Only .ser files can be decoded.\n";
-        return;
+    if (args.contains("out"))
+    {
+        output_dir = args["out"];
+    }
+    if (input_file.extension() != ".ser")
+    {
+        std::println(std::cerr, "Error: Only .ser files can be decoded.");
+        return la_result::Error;
     }
 
-    try
-    {
-        SerFile::decode_to_dir(input_file, output_dir);
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return;
-    }
+    la_result result = SerFile::decode_to_dir(input_file, output_dir);
+
+    return result;
 }
