@@ -16,3 +16,15 @@ cd build
 
 cmake .. -D CMAKE_CXX_COMPILER=clang++-19
 ```
+
+Building `librtprocess`:
+```
+cmake -DCMAKE_CXX_COMPILER=clang++-19 \
+      -DCMAKE_CXX_FLAGS="-stdlib=libc++" \
+      -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++" \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DOPTION_OMP=OFF \
+      ..
+
+make -j6
+```
