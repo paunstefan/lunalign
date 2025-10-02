@@ -17,7 +17,7 @@ la_result run_decode(std::unordered_map<std::string, std::string>& args)
     }
     fs::path input_file = args["in"];
 
-    fs::path output_dir = "fits_out";
+    fs::path output_dir = "process/fits_out";
     if (args.contains("out"))
     {
         output_dir = args["out"];
@@ -27,6 +27,8 @@ la_result run_decode(std::unordered_map<std::string, std::string>& args)
         std::println(std::cerr, "Error: Only .ser files can be decoded.");
         return la_result::Error;
     }
+
+    fs::create_directories(output_dir);
 
     la_result result = SerFile::decode_to_dir(input_file, output_dir);
 

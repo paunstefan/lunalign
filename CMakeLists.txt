@@ -9,6 +9,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(CMAKE_BUILD_TYPE Debug)
+
 file(GLOB SOURCE_FILES "src/*.cpp")
 add_executable(lunalign ${SOURCE_FILES})
 

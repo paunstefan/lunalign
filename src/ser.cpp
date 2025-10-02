@@ -1,4 +1,5 @@
 #include "ser.hpp"
+#include "fits.hpp"
 
 #include "fitsio.h"
 #include "result.hpp"
@@ -12,18 +13,9 @@
 #include <string>
 #include <vector>
 
+
 namespace fs = std::filesystem;
 
-la_result check_fits_status(int status)
-{
-    if (status)
-    {
-        fits_report_error(stderr, status);
-        std::println(std::cerr, "CFITSIO error occurred.");
-        return la_result::Error;
-    }
-    return la_result::Ok;
-}
 
 int32_t read_le_i32(const std::vector<uint8_t> &buffer, size_t offset)
 {
@@ -80,8 +72,6 @@ la_result SerFile::decode_to_dir(const fs::path &input_path, const fs::path &out
     }
     }
 
-    fs::create_directories(output_dir);
-
     std::vector<uint8_t> frame_buffer(frame_size_bytes);
     for (int32_t i = 0; i < header.frame_count; ++i)
     {
@@ -94,9 +84,7 @@ la_result SerFile::decode_to_dir(const fs::path &input_path, const fs::path &out
             return la_result::Error;
         }
 
-        std::ostringstream oss;
-        oss << "decoded_" << std::setw(4) << std::setfill('0') << i << ".fits";
-        fs::path output_filename = output_dir / oss.str();
+        fs::path output_filename = output_dir / std::format("decoded_{:04d}.fits",i);
 
         fitsfile *fptr = nullptr;
         int status = 0;
