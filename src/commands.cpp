@@ -1,6 +1,7 @@
 #include "commands.hpp"
 #include "debayer.hpp"
 #include "decode.hpp"
+#include "rate.hpp"
 #include "result.hpp"
 #include <iostream>
 #include <print>
@@ -11,8 +12,11 @@
 static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args);
 static void insert_in_map(std::unordered_map<std::string, std::string> &map, const std::string &arg);
 
-struct Command commands[] = {{"decode", 2, run_decode, "Decode a video file into FITS files."},
-                             {"debayer", 2, run_debayer, "Debayer a series of images into color FITS files."}};
+struct Command commands[] = {
+    {"decode", 2, run_decode, "Decode a video file into FITS files."},
+    {"debayer", 2, run_debayer, "Debayer a series of images into color FITS files."},
+    {"rate", 3, run_rate, "Rate the clarity of the images and copy the best ones."},
+};
 
 la_result process_commands(std::string script)
 {
