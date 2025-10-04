@@ -3,3 +3,4 @@ lunalign
 fits_out
 compile_commands.json
 *.cache
+*test
