@@ -1,6 +1,5 @@
 #include "rate.hpp"
 #include "result.hpp"
-#include <__ostream/print.h>
 #include <cstdint>
 #include <filesystem>
 #include <fitsio.h>
@@ -12,6 +11,7 @@
 #include <string.h>
 #include <string>
 #include <vector>
+#include <opencv2/opencv.hpp>
 
 #include "fits.hpp"
 
@@ -127,8 +127,10 @@ float rate_image(fitsfile *image)
         return -1;
     }
 
+    int width = naxes[0];
+    int height = naxes[1];
+
     nelements = naxes[0] * naxes[1] * naxes[2];
-    std::println("{} axes: {} {} {} => {} elements", naxes, naxes[0], naxes[1], naxes[2], nelements);
 
     // std::vector<uint16_t> image_data(nelements);
 
@@ -146,7 +148,21 @@ float rate_image(fitsfile *image)
         return -1;
     }
 
-    auto score = calculate_laplacian(naxes[0], naxes[1], green_layer);
+    cv::Mat imageMat(height, width, CV_16UC1, green_layer.data());
+
+    cv::Mat blurredMat;
+    cv::Size kernelSize = cv::Size(5, 5); 
+    double sigmaX = 0; 
+    
+    cv::GaussianBlur(imageMat, blurredMat, kernelSize, sigmaX);
+
+    uint16_t* p_start = (uint16_t*)blurredMat.datastart;
+    
+    uint16_t* p_end = (uint16_t*)blurredMat.dataend;
+    
+    std::vector<uint16_t> blurredVector(p_start, p_end);
+
+    auto score = calculate_laplacian(naxes[0], naxes[1], blurredVector);
 
     return score;
 }

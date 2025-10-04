@@ -15,16 +15,36 @@ file(GLOB SOURCE_FILES "src/*.cpp")
 add_executable(lunalign ${SOURCE_FILES})
 
 target_include_directories(lunalign PRIVATE
-    libs/cfitsio-cfitsio-4.6.2/
-    libs/librtprocess-0.12.0/src/include
+    libs/include
 )
 
 target_link_directories(lunalign PRIVATE libs)
 
 target_link_libraries(lunalign PRIVATE
+    # 1. High-level OpenCV modules
+    opencv_highgui
+    opencv_imgcodecs
+
+    # 2. Core processing OpenCV modules
+    opencv_imgproc
+
+    # 3. The foundational OpenCV module
+    opencv_core
+
+    # 4. OpenCV's third-party dependencies (Wrappers -> Core -> HAL)
+    ipphal
+    ippiw
+    ippicv
+
+    # 5. Other specific libraries
     cfitsio
     rtprocess
+
+    # 6. System libraries (usually last)
     z
+    dl
+    pthread
+    rt
 )
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")

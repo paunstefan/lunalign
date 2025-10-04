@@ -45,7 +45,7 @@ la_result run_debayer(std::unordered_map<std::string, std::string> &args)
 
     fs::create_directories(output_dir);
 
-    auto result = la_result::Error;
+    auto result = la_result::Ok;
     int file_count = 0;
 
     for (auto const &dir_entry : std::filesystem::directory_iterator{input_dir})
@@ -157,7 +157,6 @@ uint16_t *debayer_fits(fitsfile *fptr)
         return nullptr;
     }
 
-    printf("\n");
     uint16_t *out_buffer;
     out_buffer = debayer_buffer_new_ushort(image_data.data(), (int *)&(naxes[0]), (int *)&(naxes[1]),
                                            sensor_pattern::BAYER_FILTER_RGGB, bitpix);
