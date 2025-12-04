@@ -8,6 +8,7 @@
 #include <print>
 
 #include <fitsio.h>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -24,9 +25,17 @@ enum class sensor_pattern
     BAYER_FILTER_NONE = -1 // case where pattern is undefined or untested
 };
 
-uint16_t *debayer_fits(fitsfile *fptr);
+static const std::unordered_map<std::string, sensor_pattern> bayer_mapping = {
+    {"RGGB", sensor_pattern::BAYER_FILTER_RGGB},
+    {"BGGR", sensor_pattern::BAYER_FILTER_BGGR},
+    {"GBRG", sensor_pattern::BAYER_FILTER_GBRG},
+    {"GRBG", sensor_pattern::BAYER_FILTER_GRBG},
+};
+
+std::vector<uint16_t> debayer_fits(FitsFile &file);
 void pattern_to_cfarray(sensor_pattern pattern, unsigned int cfarray[2][2]);
-uint16_t *debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sensor_pattern pattern, int bit_depth);
+std::vector<uint16_t> debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sensor_pattern pattern,
+                                                int bit_depth);
 
 la_result run_debayer(std::unordered_map<std::string, std::string> &args)
 {
@@ -52,49 +61,28 @@ la_result run_debayer(std::unordered_map<std::string, std::string> &args)
     {
         if (dir_entry.path().extension() == ".fits")
         {
-            fitsfile *in_fptr = nullptr;
-            int bitpix, naxis;
-            long naxes[3] = {1, 1, 1};
-            int status = 0;
-            if (fits_open_file(&in_fptr, dir_entry.path().c_str(), READONLY, &status))
-            {
-                check_fits_status(status);
-                return la_result::Error;
-            }
-            if (fits_get_img_param(in_fptr, 3, &bitpix, &naxis, naxes, &status))
-            {
-                check_fits_status(status);
-                return la_result::Error;
-            }
-            long naxes_out[3] = {naxes[0], naxes[1], 3};
-            long nelem_out = naxes[0] * naxes[1] * 3;
+            auto fits_file = FitsFile(dir_entry.path(), FitsFile::Mode::ReadOnly);
 
-            uint16_t *out_buffer = debayer_fits(in_fptr);
+            std::vector<long> naxes_out = {fits_file.naxes[0], fits_file.naxes[1], 3};
+            long nelem_out = naxes_out[0] * naxes_out[1] * 3;
 
-            fits_close_file(in_fptr, &status);
-            if (out_buffer != nullptr)
+            std::vector<uint16_t> out_buffer = debayer_fits(fits_file);
+
+            if (!out_buffer.empty())
             {
                 fs::path output_filename = output_dir / std::format("debayered_{}.fits", file_count);
                 file_count++;
                 std::string create_path = "!" + output_filename.string();
-                fitsfile *out_fptr = nullptr;
-                fits_create_file(&out_fptr, create_path.c_str(), &status);
-                check_fits_status(status);
 
-                fits_create_img(out_fptr, USHORT_IMG, 3, naxes_out, &status);
-                check_fits_status(status);
+                auto out_file = FitsFile(create_path, FitsFile::Mode::Create);
 
-                fits_write_comment(out_fptr, "CTYPE3 = 'RGB' / Color space", &status);
-                fits_write_comment(out_fptr, "CPLANE1 = 'RED' / Color plane 1", &status);
-                fits_write_comment(out_fptr, "CPLANE2 = 'GREEN' / Color plane 2", &status);
-                fits_write_comment(out_fptr, "CPLANE3 = 'BLUE' / Color plane 3", &status);
+                out_file.writePix(out_buffer, 3, naxes_out, {1, 1, 1}, nelem_out);
 
-                long fpixel[3] = {1, 1, 1};
-                fits_write_pix(out_fptr, TUSHORT, fpixel, nelem_out, out_buffer, &status);
-                check_fits_status(status);
+                out_file.writeComment("CTYPE3 = 'RGB' / Color space");
+                out_file.writeComment("CPLANE1 = 'RED' / Color plane 1");
+                out_file.writeComment("CPLANE2 = 'GREEN' / Color plane 2");
+                out_file.writeComment("CPLANE3 = 'BLUE' / Color plane 3");
 
-                fits_close_file(out_fptr, &status);
-                check_fits_status(status);
             }
         }
     }
@@ -102,23 +90,8 @@ la_result run_debayer(std::unordered_map<std::string, std::string> &args)
     return result;
 }
 
-uint16_t *debayer_fits(fitsfile *fptr)
+std::vector<uint16_t> debayer_fits(FitsFile &file)
 {
-    int bitpix, naxis;
-    long naxes[3] = {1, 1, 1};  // NAXISn dimensions, max 3 for this example
-    long fpixel[3] = {1, 1, 1}; // Starting pixel coordinates for reading
-    long nelements;
-    char bayerpat[10] = ""; // To store the Bayer pattern string
-    char comment[FLEN_COMMENT];
-    unsigned int cfarray[2][2];
-    int status = 0;
-
-    if (fits_get_img_param(fptr, 3, &bitpix, &naxis, naxes, &status))
-    {
-        check_fits_status(status);
-        return nullptr;
-    }
-
     // printf("FITS File Information:\n");
     // printf("------------------------\n");
     // printf("BITPIX (data type): %d\n", bitpix);
@@ -129,42 +102,45 @@ uint16_t *debayer_fits(fitsfile *fptr)
     //     printf("NAXIS%d (dimension %d): %ld\n", i + 1, i + 1, naxes[i]);
     // }
 
-    int bayer_status = 0;
-    if (fits_read_key(fptr, TSTRING, "BAYERPAT", bayerpat, comment, &bayer_status))
+    auto key_read = file.readKey("BAYERPAT");
+
+    if (!key_read)
     {
-        printf("BAYERPAT keyword: Not found.\n");
+        std::println("Error: Could not read bayer pattern from FITS file {}!", file.name);
     }
 
-    // if(strcmp(bayerpat, "RGGB") == 0)
-    // {
-    //     pattern_to_cfarray(sensor_pattern::BAYER_FILTER_RGGB, cfarray);
-    // }
-    // else{
-    //     return la_result::Error;
-    // }
+    std::string bayer_pattern = *key_read;
 
-    nelements = naxes[0] * naxes[1];
-    if (naxis > 2)
+    auto it = bayer_mapping.find(bayer_pattern);
+    if (it == bayer_mapping.end())
     {
-        nelements *= naxes[2];
+        std::println("{}", bayer_pattern);
+        std::println("Error: Bayer pattern invalid for {}!", file.name);
+        return {};
     }
 
-    std::vector<uint16_t> image_data(nelements);
+    auto sensor_pat = it->second;
 
-    if (fits_read_pix(fptr, TUSHORT, fpixel, nelements, NULL, image_data.data(), NULL, &status))
+    long nelements = file.naxes[0] * file.naxes[1];
+    if (file.naxis > 2)
     {
-        check_fits_status(status);
-        return nullptr;
+        nelements *= file.naxes[2];
     }
 
-    uint16_t *out_buffer;
-    out_buffer = debayer_buffer_new_ushort(image_data.data(), (int *)&(naxes[0]), (int *)&(naxes[1]),
-                                           sensor_pattern::BAYER_FILTER_RGGB, bitpix);
+    std::vector<uint16_t> image_data = file.readPix<uint16_t>({1, 1, 1}, nelements);
 
-    if (!out_buffer)
+    if (image_data.empty())
+    {
+        return {};
+    }
+
+    auto out_buffer = debayer_buffer_new_ushort(image_data.data(), (int *)&(file.naxes[0]), (int *)&(file.naxes[1]),
+                                                sensor_pat, file.bitpix);
+
+    if (out_buffer.empty())
     {
         std::println("Debayer failed");
-        return nullptr;
+        return {};
     }
 
     return out_buffer;
@@ -246,7 +222,11 @@ uint16_t roundf_to_WORD(float f)
     return retval;
 }
 
-uint16_t *debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sensor_pattern pattern, int bit_depth)
+/**
+    Function copied from the Siril project.
+ */
+std::vector<uint16_t> debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sensor_pattern pattern,
+                                                int bit_depth)
 {
     unsigned int cfarray[2][2];
     int i, rx = *width, ry = *height;
@@ -256,13 +236,13 @@ uint16_t *debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sens
     float **rawdata = (float **)malloc(ry * sizeof(float *));
     if (!rawdata)
     {
-        return NULL;
+        return {};
     }
     rawdata[0] = (float *)malloc(nbpixels * sizeof(float));
     if (!rawdata[0])
     {
         free(rawdata);
-        return NULL;
+        return {};
     }
     // TODO: vectorize!
     for (j = 0; j < nbpixels; j++)
@@ -276,7 +256,7 @@ uint16_t *debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sens
     if (!newdata)
     {
         free(rawdata);
-        return NULL;
+        return {};
     }
 
     float **red = (float **)malloc(ry * sizeof(float *));
@@ -304,30 +284,24 @@ uint16_t *debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sens
     free(rawdata);
 
     // 4. get the result in WORD (memory size: 3 times original)
-    uint16_t *newfitdata = (uint16_t *)malloc(n * sizeof(uint16_t));
+    // UPDATED TO VECTOR
+    std::vector<uint16_t> newfitdata(n);
 
-    if (!newfitdata)
+    for (j = 0; j < n; j++)
     {
-        retval = RP_MEMORY_ERROR;
-    }
-    else
-    {
-        for (j = 0; j < n; j++)
+        /* here bit_depth can really be bit_depth (with SER files
+         * OR bitpix (with FITS file) so we need to pay attention!!!!
+         * But BYTE_IMG has the value of 8. So it should be fine. */
+        if (bit_depth == BYTE_IMG)
         {
-            /* here bit_depth can really be bit_depth (with SER files
-             * OR bitpix (with FITS file) so we need to pay attention!!!!
-             * But BYTE_IMG has the value of 8. So it should be fine. */
-            if (bit_depth == BYTE_IMG)
-            {
-                newfitdata[j] = roundf_to_BYTE(newdata[j]);
-            }
-            else
-            {
-                newfitdata[j] = roundf_to_WORD(newdata[j]);
-            }
-            /* these rounding are required because librtprocess
-             * often returns data out of expected range */
+            newfitdata[j] = roundf_to_BYTE(newdata[j]);
         }
+        else
+        {
+            newfitdata[j] = roundf_to_WORD(newdata[j]);
+        }
+        /* these rounding are required because librtprocess
+         * often returns data out of expected range */
     }
 
     free(newdata);
@@ -338,6 +312,5 @@ uint16_t *debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sens
     {
         return newfitdata;
     }
-    free(newfitdata);
-    return NULL;
+    return {};
 }

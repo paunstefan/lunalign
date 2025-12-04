@@ -13,9 +13,7 @@
 #include <string>
 #include <vector>
 
-
 namespace fs = std::filesystem;
-
 
 int32_t read_le_i32(const std::vector<uint8_t> &buffer, size_t offset)
 {
@@ -72,6 +70,8 @@ la_result SerFile::decode_to_dir(const fs::path &input_path, const fs::path &out
     }
     }
 
+    la_result res = la_result::Error;
+
     std::vector<uint8_t> frame_buffer(frame_size_bytes);
     for (int32_t i = 0; i < header.frame_count; ++i)
     {
@@ -84,23 +84,18 @@ la_result SerFile::decode_to_dir(const fs::path &input_path, const fs::path &out
             return la_result::Error;
         }
 
-        fs::path output_filename = output_dir / std::format("decoded_{:04d}.fits",i);
+        fs::path output_filename = output_dir / std::format("decoded_{:04d}.fits", i);
 
-        fitsfile *fptr = nullptr;
         int status = 0;
-        long naxes[2] = {header.width, header.height};
+        std::vector<long> naxes = {header.width, header.height};
 
         std::string create_path = "!" + output_filename.string();
-        fits_create_file(&fptr, create_path.c_str(), &status);
-        check_fits_status(status);
-
-        fits_create_img(fptr, fits_image_type, 2, naxes, &status);
-        check_fits_status(status);
+        auto fits_file = FitsFile(create_path, FitsFile::Mode::Create);
 
         switch (fits_image_type)
         {
         case 8: {
-            fits_write_img(fptr, TBYTE, 1, pixels_per_frame, frame_buffer.data(), &status);
+            res = fits_file.writeImage(frame_buffer, 2, naxes, 1, pixels_per_frame);
             break;
         }
         case 16: {
@@ -110,7 +105,7 @@ la_result SerFile::decode_to_dir(const fs::path &input_path, const fs::path &out
                 image_data[p] =
                     static_cast<uint16_t>(frame_buffer[p * 2]) | (static_cast<uint16_t>(frame_buffer[p * 2 + 1]) << 8);
             }
-            fits_write_img(fptr, TUSHORT, 1, pixels_per_frame, image_data.data(), &status);
+            res = fits_file.writeImage(image_data, 2, naxes, 1, pixels_per_frame);
             break;
         }
         case 32: {
@@ -122,16 +117,36 @@ la_result SerFile::decode_to_dir(const fs::path &input_path, const fs::path &out
                                 (static_cast<uint32_t>(frame_buffer[p * 4 + 2]) << 16) |
                                 (static_cast<uint32_t>(frame_buffer[p * 4 + 3]) << 24);
             }
-            fits_write_img(fptr, TULONG, 1, pixels_per_frame, image_data.data(), &status);
+            res = fits_file.writeImage(image_data, 2, naxes, 1, pixels_per_frame);
             break;
         }
         }
-        check_fits_status(status);
 
-        fits_close_file(fptr, &status);
-        check_fits_status(status);
+        std::string bayer_pattern;
+        switch (header.color)
+        {
+        case 8:
+            bayer_pattern = "RGGB";
+            break;
+        case 9:
+            bayer_pattern = "GRBG";
+            break;
+        case 10:
+            bayer_pattern = "GBRG";
+            break;
+        case 11:
+            bayer_pattern = "BGGR";
+            break;
+        default:
+            break;
+        }
+
+        if (!bayer_pattern.empty())
+        {
+            res = fits_file.writeKey("BAYERPAT", bayer_pattern);
+        }
     }
 
     std::println("\nConversion complete! {} FITS files written to '{}'.", header.frame_count, output_dir.string());
-    return la_result::Ok;
+    return res;
 }

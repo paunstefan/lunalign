@@ -5,13 +5,13 @@
 #include <fitsio.h>
 #include <iostream>
 #include <numeric>
+#include <opencv2/opencv.hpp>
 #include <print>
 #include <ranges>
 #include <set>
 #include <string.h>
 #include <string>
 #include <vector>
-#include <opencv2/opencv.hpp>
 
 #include "fits.hpp"
 
@@ -28,7 +28,7 @@ struct ImageRating
     }
 };
 
-float rate_image(fitsfile *image);
+float rate_image(FitsFile &image);
 float calculate_laplacian(int width, int height, std::vector<uint16_t> &image_data);
 
 la_result run_rate(std::unordered_map<std::string, std::string> &args)
@@ -61,18 +61,10 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
     {
         if (dir_entry.path().extension() == ".fits")
         {
-            fitsfile *in_fptr = nullptr;
-            int status = 0;
-            if (fits_open_file(&in_fptr, dir_entry.path().c_str(), READONLY, &status))
-            {
-                check_fits_status(status);
-                return la_result::Error;
-            }
+            auto fits_file = FitsFile(dir_entry.path(), FitsFile::Mode::ReadOnly);
 
-            float rating = rate_image(in_fptr);
+            float rating = rate_image(fits_file);
             images.insert({dir_entry.path(), rating});
-
-            fits_close_file(in_fptr, &status);
         }
     }
     std::println("Count: {}", images.size());
@@ -105,64 +97,39 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
     return result;
 }
 
-float rate_image(fitsfile *image)
+float rate_image(FitsFile &image)
 {
-
-    int bitpix, naxis;
-    long naxes[3] = {1, 1, 1};
-    // long fpixel[3] = {1, 1, 1};
-    long fpixel[3] = {1, 1, 2}; // Starting pixel coordinates for reading green
-    long nelements;
-    int status = 0;
-
-    if (fits_get_img_param(image, 3, &bitpix, &naxis, naxes, &status))
-    {
-        check_fits_status(status);
-        return -1;
-    }
-
-    if (naxis != 3)
+    if (image.naxis != 3)
     {
         std::println(std::cerr, "Number of axes != 3");
         return -1;
     }
 
-    int width = naxes[0];
-    int height = naxes[1];
+    int width = image.naxes[0];
+    int height = image.naxes[1];
 
-    nelements = naxes[0] * naxes[1] * naxes[2];
+    std::vector<uint16_t> green_layer = image.readPix<uint16_t>({1, 1, 2}, width * height);
 
-    // std::vector<uint16_t> image_data(nelements);
-
-    // if (fits_read_pix(image, TUSHORT, fpixel, nelements, NULL, image_data.data(), NULL, &status))
-    // {
-    //     check_fits_status(status);
-    //     return -1;
-    // }
-
-    std::vector<uint16_t> green_layer(naxes[0] * naxes[1]);
-
-    if (fits_read_pix(image, TUSHORT, fpixel, naxes[0] * naxes[1], NULL, green_layer.data(), NULL, &status))
+    if (green_layer.empty())
     {
-        check_fits_status(status);
         return -1;
     }
 
     cv::Mat imageMat(height, width, CV_16UC1, green_layer.data());
 
     cv::Mat blurredMat;
-    cv::Size kernelSize = cv::Size(5, 5); 
-    double sigmaX = 0; 
-    
+    cv::Size kernelSize = cv::Size(5, 5);
+    double sigmaX = 0;
+
     cv::GaussianBlur(imageMat, blurredMat, kernelSize, sigmaX);
 
-    uint16_t* p_start = (uint16_t*)blurredMat.datastart;
-    
-    uint16_t* p_end = (uint16_t*)blurredMat.dataend;
-    
+    uint16_t *p_start = (uint16_t *)blurredMat.datastart;
+
+    uint16_t *p_end = (uint16_t *)blurredMat.dataend;
+
     std::vector<uint16_t> blurredVector(p_start, p_end);
 
-    auto score = calculate_laplacian(naxes[0], naxes[1], blurredVector);
+    auto score = calculate_laplacian(image.naxes[0], image.naxes[1], blurredVector);
 
     return score;
 }
