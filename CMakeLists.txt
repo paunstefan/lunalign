@@ -1,55 +1,101 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(lunalign CXX)
+project(lunalign CXX C)
 
-# set(CMAKE_C_COMPILER clang-19)
-# set(CMAKE_CXX_COMPILER clang++-19)
-
+# --- 1. Global Compiler Setup ---
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
 set(CMAKE_BUILD_TYPE Debug)
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++>)
+    add_link_options($<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++>)
+endif()
+
+# --- 2. Configure & Build Dependencies ---
+
+# A. Configure cfitsio
+set(TESTS OFF CACHE BOOL "Disable cfitsio tests" FORCE)
+
+# 2. Disable utilities (fpack, funpack) to save build time
+set(UTILS OFF CACHE BOOL "Disable cfitsio utilities" FORCE)
+
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libs" FORCE)
+set(USE_PTHREADS ON CACHE BOOL "Use Pthreads" FORCE)
+# Prevent cfitsio from trying to install itself to system directories during your local build
+set(SKIP_INSTALL_ALL ON CACHE BOOL "Skip install" FORCE) 
+
+add_subdirectory(libs/cfitsio-cfitsio-4.6.2)
+
+target_include_directories(cfitsio PUBLIC 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libs/cfitsio-cfitsio-4.6.2>
+)
+
+# B. Configure librtprocess
+set(OPTION_OMP OFF CACHE BOOL "Disable OpenMP" FORCE)
+# Note: It will inherit the -stdlib=libc++ defined in section 1 automatically
+add_subdirectory(libs/librtprocess-0.12.0)
+
+
+# C. Configure OpenCV
+# Limit the build to only what you need to save massive amounts of compile time
+set(BUILD_LIST "core,imgproc,imgcodecs,highgui" CACHE STRING "Requested modules" FORCE)
+set(WITH_ITT OFF CACHE BOOL "Disable ITT" FORCE)
+
+# Turn off extra OpenCV bloat
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_PERF_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_opencv_apps OFF CACHE BOOL "" FORCE)
+set(BUILD_JAVA OFF CACHE BOOL "" FORCE)
+set(BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(libs/opencv-4.12.0)
+
+if(TARGET ipphal)
+    target_include_directories(ipphal PRIVATE 
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/opencv-4.12.0/modules/core/include
+    )
+endif()
+
+# --- 3. Build Your Project ---
 
 file(GLOB SOURCE_FILES "src/*.cpp")
 add_executable(lunalign ${SOURCE_FILES})
 
+# --- 4. Linking ---
+
+set(OCV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/opencv-4.12.0)
+set(OCV_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
+
 target_include_directories(lunalign PRIVATE
     libs/include
+
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libs/cfitsio-cfitsio-4.6.2>
+
+    ${OCV_DIR}/modules/core/include
+    ${OCV_DIR}/modules/imgproc/include
+    ${OCV_DIR}/modules/imgcodecs/include
+    ${OCV_DIR}/modules/highgui/include
+
+    ${OCV_BUILD_DIR}
+    ${OCV_BUILD_DIR}/include
 )
 
-target_link_directories(lunalign PRIVATE libs)
-
 target_link_libraries(lunalign PRIVATE
-    # 1. High-level OpenCV modules
     opencv_highgui
     opencv_imgcodecs
 
-    # 2. Core processing OpenCV modules
     opencv_imgproc
 
-    # 3. The foundational OpenCV module
     opencv_core
 
-    # 4. OpenCV's third-party dependencies (Wrappers -> Core -> HAL)
-    ipphal
-    ippiw
-    ippicv
-
-    # 5. Other specific libraries
     cfitsio
     rtprocess
 
-    # 6. System libraries (usually last)
     z
     dl
     pthread
     rt
 )
-
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(lunalign PRIVATE "-stdlib=libc++")
-    target_link_options(lunalign PRIVATE "-stdlib=libc++")
-endif()
-
-message(STATUS "CMake configuration complete. You can now build with 'make'.")

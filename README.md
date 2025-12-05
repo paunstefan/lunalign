@@ -16,7 +16,19 @@ mkdir build
 cd build
 
 cmake .. -D CMAKE_CXX_COMPILER=clang++-19
+make
 ```
+
+The commands to build the dependencies separately:
+(This will now be done automatically by the main CMake file.)
+
+Building `cfitsio`:
+```
+cmake -G "Unix Makefiles" -DBUILD_SHARED_LIBS=OFF -DUSE_PTHREADS=ON ..
+
+make
+```
+
 
 Building `librtprocess`:
 ```
