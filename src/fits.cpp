@@ -74,6 +74,10 @@ FitsFile &FitsFile::operator=(FitsFile &&other) noexcept
         close();
         fptr = other.fptr;
         status = other.status;
+        bitpix = other.bitpix;
+        naxis = other.naxis;
+        naxes = other.naxes;
+        name = other.name;
         other.fptr = nullptr;
     }
     return *this;

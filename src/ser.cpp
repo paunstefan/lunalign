@@ -86,7 +86,6 @@ la_result SerFile::decode_to_dir(const fs::path &input_path, const fs::path &out
 
         fs::path output_filename = output_dir / std::format("decoded_{:04d}.fits", i);
 
-        int status = 0;
         std::vector<long> naxes = {header.width, header.height};
 
         std::string create_path = "!" + output_filename.string();
