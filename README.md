@@ -1,6 +1,5 @@
 # LunAlign
 
-TODO: refactoring to C++, logging, fits class
 
 ## Build instructions
 
@@ -52,3 +51,9 @@ make install
 ```
 
 You should now copy the header files from `/usr/local/include` into the include directory from the repo.
+
+## Third-Party Code
+
+* **Siril**: Portions of this software (specifically demosaicing code) were adapted from [Siril](https://free-astro.org/index.php/Siril).
+    * *Copyright:* Francois Meyer and team free-astro.
+    * *License:* GPLv3.
