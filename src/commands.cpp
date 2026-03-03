@@ -3,20 +3,30 @@
 #include "decode.hpp"
 #include "rate.hpp"
 #include "result.hpp"
+#include <algorithm>
+#include <chrono>
 #include <iostream>
 #include <print>
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <chrono>
 
 static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args);
 static void insert_in_map(std::unordered_map<std::string, std::string> &map, const std::string &arg);
 
-struct Command commands[] = {
-    {"decode", 2, run_decode, "Decode a video file into FITS files."},
-    {"debayer", 2, run_debayer, "Debayer a series of images into color FITS files."},
-    {"rate", 3, run_rate, "Rate the clarity of the images and copy the best ones."},
+const std::vector<Command> commands = {
+    {"decode",
+     {{"in", true, ""}, {"out", false, "process/rating_out"}},
+     run_decode,
+     "Decode a video file into FITS files."},
+    {"debayer",
+     {{"in", true, ""}, {"out", false, "process/rating_out"}},
+     run_debayer,
+     "Debayer a series of images into color FITS files."},
+    {"rate",
+     {{"in", true, ""}, {"percent", true, ""}, {"out", false, "process/rating_out"}},
+     run_rate,
+     "Rate the clarity of the images and copy the best ones."},
 };
 
 la_result process_commands(std::string script)
@@ -59,35 +69,42 @@ la_result process_commands(std::string script)
     return la_result::Ok;
 }
 
-static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args)
+static la_result validate_and_run(const Command &cmd, std::unordered_map<std::string, std::string> &args)
 {
-    bool found = false;
-    for (int i = 0; i < sizeof(commands) / sizeof(Command); i++)
+    for (const auto &spec : cmd.args)
     {
-        if (commands[i].name == command)
+        if (spec.required && !args.contains(spec.name))
         {
-            found = true;
-            auto start = std::chrono::high_resolution_clock::now();
-            la_result result = commands[i].runner(args);
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> elapsed = end - start;
-            if (result == la_result::Error)
-            {
-                return result;
-            }
-            std::println(std::cerr, "Elapsed time: {}ms", elapsed.count());
-
-            break;
+            std::println(std::cerr, "Error: Required argument '{}' for '{}' not present!", spec.name, cmd.name);
+            return la_result::Error;
+        }
+        if (!spec.required && !args.contains(spec.name) && !spec.default_value.empty())
+        {
+            args[spec.name] = spec.default_value;
         }
     }
 
-    if (!found)
+    auto start = std::chrono::high_resolution_clock::now();
+
+    auto result = cmd.runner(args);
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> elapsed = end - start;
+    std::println(std::cerr, "Elapsed time: {}ms", elapsed.count());
+
+    return result;
+}
+
+static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args)
+{
+
+    auto it = std::ranges::find_if(commands, [&](const Command &c) { return c.name == command; });
+    if (it == commands.end())
     {
         std::println(std::cerr, "Error: command '{}' not valid.", command);
         return la_result::Error;
     }
-
-    return la_result::Ok;
+    return validate_and_run(*it, args);
 }
 
 static void insert_in_map(std::unordered_map<std::string, std::string> &map, const std::string &arg)

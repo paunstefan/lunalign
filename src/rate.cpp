@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <fitsio.h>
 #include <iostream>
-#include <numeric>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -12,8 +11,6 @@
 #include <optional>
 #include <print>
 #include <ranges>
-#include <set>
-#include <string.h>
 #include <string>
 #include <vector>
 
@@ -37,45 +34,39 @@ float calculate_laplacian(int width, int height, std::vector<uint16_t> &image_da
 
 la_result run_rate(std::unordered_map<std::string, std::string> &args)
 {
-    if (!args.contains("in"))
-    {
-        std::println("Error: Required argument 'in' for 'rate' not present!");
-        return la_result::Error;
-    }
     fs::path input_dir = args["in"];
 
-    if (!args.contains("percent"))
-    {
-        std::println("Error: Required argument 'percent' for 'rate' not present!");
-        return la_result::Error;
-    }
     float percentage = std::stof(args["percent"]);
 
-    fs::path output_dir = "process/rating_out";
-    if (args.contains("out"))
-    {
-        output_dir = args["out"];
-    }
+    fs::path output_dir = args["out"];
 
     fs::create_directories(output_dir);
 
-    std::set<ImageRating> images;
     FrameEvaluation evaluator;
 
+    std::vector<fs::path> fits_files;
     for (auto const &dir_entry : std::filesystem::directory_iterator{input_dir})
     {
         if (dir_entry.path().extension() == ".fits")
-        {
-            auto fits_file = FitsFile(dir_entry.path(), FitsFile::Mode::ReadOnly);
+            fits_files.push_back(dir_entry.path());
+    }
 
-            auto rating = evaluator.rate_image(fits_file);
-            if (rating.has_value())
-            {
-                images.insert({dir_entry.path(), rating.value()});
-            }
+    std::vector<ImageRating> images(fits_files.size());
+
+#pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < static_cast<int>(fits_files.size()); ++i)
+    {
+        auto fits_file = FitsFile(fits_files[i], FitsFile::Mode::ReadOnly);
+
+        auto rating = evaluator.rate_image(fits_file);
+        if (rating.has_value())
+        {
+            images[i] = {fits_files[i], rating.value()};
+            std::println("Evaluated image {}: {}", fits_files[i].string(), rating.value());
         }
     }
-    std::println("Count: {}", images.size());
+
+    std::println("\nFinished evaluating!\nCount: {}", images.size());
 
     int images_to_save = static_cast<float>(images.size()) * (percentage / 100.0);
     if (images_to_save == 0)
@@ -83,14 +74,12 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
         images_to_save = 1;
     }
 
-    for (auto &image : images | std::views::reverse)
-    {
-        std::println("{}: {}", image.path.string(), image.rating);
-    }
+    std::println("Copying best rated frames:");
 
     for (auto &image : images | std::views::reverse | std::views::take(images_to_save))
     {
         fs::path new_path = output_dir / image.path.filename();
+        std::println("{}: {}", image.path.filename().string(), image.rating);
         fs::copy_file(image.path, new_path, fs::copy_options::overwrite_existing);
     }
 
@@ -134,6 +123,7 @@ std::optional<float> FrameEvaluation::rate_image(FitsFile &image)
     return static_cast<float>(stddev[0] * stddev[0]);
 }
 
+#if 0
 float calculate_laplacian(int width, int height, std::vector<uint16_t> &image_data)
 {
     if (height < 2 || width < 2)
@@ -170,3 +160,4 @@ float calculate_laplacian(int width, int height, std::vector<uint16_t> &image_da
 
     return variance;
 }
+#endif

@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
+cmake_policy(SET CMP0079 NEW) 
+
 project(lunalign CXX C)
 
 # --- 1. Global Compiler Setup ---
@@ -12,6 +14,10 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++>)
     add_link_options($<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++>)
 endif()
+
+find_package(OpenMP REQUIRED)
+
+
 
 # --- 2. Configure & Build Dependencies ---
 
@@ -66,6 +72,14 @@ add_executable(lunalign ${SOURCE_FILES})
 
 # --- 4. Linking ---
 
+if(OpenMP_FOUND)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        target_link_options(lunalign PRIVATE -static-libgomp)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_link_options(lunalign PRIVATE -static-openmp)
+    endif()
+endif()
+
 set(OCV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/opencv-4.12.0)
 set(OCV_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -84,6 +98,7 @@ target_include_directories(lunalign PRIVATE
 )
 
 target_link_libraries(lunalign PRIVATE
+    OpenMP::OpenMP_CXX
     opencv_highgui
     opencv_imgcodecs
 

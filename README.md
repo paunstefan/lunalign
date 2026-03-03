@@ -10,6 +10,12 @@ sudo apt install clang-19
 sudo apt install libc++-19-dev libc++abi-19-dev
 ```
 
+Also the program uses OpenMP, so you need to install the library to compile it:
+
+```bash
+sudo apt install libomp-19-dev
+```
+
 ```
 mkdir build
 cd build

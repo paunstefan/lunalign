@@ -6,10 +6,16 @@
 
 #include "result.hpp"
 
+struct ArgSpec {
+    std::string name;
+    bool required;
+    std::string default_value; // used if not required
+};
+
 struct Command
 {
     std::string name;
-    int number_args;
+    std::vector<ArgSpec> args;
     std::function<la_result(std::unordered_map<std::string, std::string>&)> runner;
     std::string help;
 };

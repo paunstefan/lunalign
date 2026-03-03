@@ -27,57 +27,53 @@
 #include <iostream>
 #include <librtprocess.h>
 #include <print>
+#include <vector>
 
 #include <fitsio.h>
-#include <vector>
+#include <omp.h>
 
 namespace fs = std::filesystem;
 
 la_result run_debayer(std::unordered_map<std::string, std::string> &args)
 {
-    if (!args.contains("in"))
-    {
-        std::println("Error: Required argument 'in' for 'debayer' not present!");
-        return la_result::Error;
-    }
     fs::path input_dir = args["in"];
 
-    fs::path output_dir = "process/debayered";
-    if (args.contains("out"))
-    {
-        output_dir = args["out"];
-    }
+    fs::path output_dir = args["out"];
 
     fs::create_directories(output_dir);
 
     auto result = la_result::Ok;
     Debayer debayer;
 
+    std::vector<fs::path> fits_files;
     for (auto const &dir_entry : std::filesystem::directory_iterator{input_dir})
     {
         if (dir_entry.path().extension() == ".fits")
+            fits_files.push_back(dir_entry.path());
+    }
+
+#pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < static_cast<int>(fits_files.size()); ++i)
+    {
+        const auto &path = fits_files[i];
+
+        auto fits_file = FitsFile(path, FitsFile::Mode::ReadOnly);
+        std::vector<long> naxes_out = {fits_file.naxes[0], fits_file.naxes[1], 3};
+        long nelem_out = naxes_out[0] * naxes_out[1] * 3;
+
+        std::vector<uint16_t> out_buffer = debayer.debayer_fits(fits_file);
+
+        if (!out_buffer.empty())
         {
-            auto fits_file = FitsFile(dir_entry.path(), FitsFile::Mode::ReadOnly);
-
-            std::vector<long> naxes_out = {fits_file.naxes[0], fits_file.naxes[1], 3};
-            long nelem_out = naxes_out[0] * naxes_out[1] * 3;
-
-            std::vector<uint16_t> out_buffer = debayer.debayer_fits(fits_file);
-
-            if (!out_buffer.empty())
-            {
-                fs::path output_filename = output_dir / ("debayered_" + dir_entry.path().filename().string());
-                std::string create_path = "!" + output_filename.string();
-
-                auto out_file = FitsFile(create_path, FitsFile::Mode::Create);
-
-                out_file.writePix(out_buffer, 3, naxes_out, {1, 1, 1}, nelem_out);
-
-                out_file.writeComment("CTYPE3 = 'RGB' / Color space");
-                out_file.writeComment("CPLANE1 = 'RED' / Color plane 1");
-                out_file.writeComment("CPLANE2 = 'GREEN' / Color plane 2");
-                out_file.writeComment("CPLANE3 = 'BLUE' / Color plane 3");
-            }
+            fs::path output_filename = output_dir / ("debayered_" + path.filename().string());
+            std::println("Debayered file: {}", path.filename().string());
+            std::string create_path = "!" + output_filename.string();
+            auto out_file = FitsFile(create_path, FitsFile::Mode::Create);
+            out_file.writePix(out_buffer, 3, naxes_out, {1, 1, 1}, nelem_out);
+            out_file.writeComment("CTYPE3 = 'RGB' / Color space");
+            out_file.writeComment("CPLANE1 = 'RED' / Color plane 1");
+            out_file.writeComment("CPLANE2 = 'GREEN' / Color plane 2");
+            out_file.writeComment("CPLANE3 = 'BLUE' / Color plane 3");
         }
     }
 
@@ -241,7 +237,7 @@ std::vector<uint16_t> Debayer::debayer_buffer_new_ushort(uint16_t *buf, int *wid
         free(rawdata);
         return {};
     }
-    
+
     std::transform(buf, buf + nbpixels, rawdata[0], [](uint16_t v) { return static_cast<float>(v); });
 
     for (i = 1; i < ry; i++)
