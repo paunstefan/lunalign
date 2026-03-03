@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <chrono>
 
 static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args);
 static void insert_in_map(std::unordered_map<std::string, std::string> &map, const std::string &arg);
@@ -66,11 +67,16 @@ static la_result mux_command(const std::string &command, std::unordered_map<std:
         if (commands[i].name == command)
         {
             found = true;
+            auto start = std::chrono::high_resolution_clock::now();
             la_result result = commands[i].runner(args);
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> elapsed = end - start;
             if (result == la_result::Error)
             {
                 return result;
             }
+            std::println(std::cerr, "Elapsed time: {}ms", elapsed.count());
+
             break;
         }
     }

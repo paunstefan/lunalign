@@ -33,36 +33,11 @@
 
 namespace fs = std::filesystem;
 
-enum class sensor_pattern
-{
-    BAYER_FILTER_RGGB,
-    BAYER_FILTER_BGGR,
-    BAYER_FILTER_GBRG,
-    BAYER_FILTER_GRBG,
-    XTRANS_FILTER_1,
-    XTRANS_FILTER_2,
-    XTRANS_FILTER_3,
-    XTRANS_FILTER_4,
-    BAYER_FILTER_NONE = -1 // case where pattern is undefined or untested
-};
-
-static const std::unordered_map<std::string, sensor_pattern> bayer_mapping = {
-    {"RGGB", sensor_pattern::BAYER_FILTER_RGGB},
-    {"BGGR", sensor_pattern::BAYER_FILTER_BGGR},
-    {"GBRG", sensor_pattern::BAYER_FILTER_GBRG},
-    {"GRBG", sensor_pattern::BAYER_FILTER_GRBG},
-};
-
-std::vector<uint16_t> debayer_fits(FitsFile &file);
-void pattern_to_cfarray(sensor_pattern pattern, unsigned int cfarray[2][2]);
-std::vector<uint16_t> debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sensor_pattern pattern,
-                                                int bit_depth);
-
 la_result run_debayer(std::unordered_map<std::string, std::string> &args)
 {
     if (!args.contains("in"))
     {
-        std::println("Error: Required argument 'in' for 'decode' not present!");
+        std::println("Error: Required argument 'in' for 'debayer' not present!");
         return la_result::Error;
     }
     fs::path input_dir = args["in"];
@@ -76,7 +51,7 @@ la_result run_debayer(std::unordered_map<std::string, std::string> &args)
     fs::create_directories(output_dir);
 
     auto result = la_result::Ok;
-    int file_count = 0;
+    Debayer debayer;
 
     for (auto const &dir_entry : std::filesystem::directory_iterator{input_dir})
     {
@@ -87,12 +62,11 @@ la_result run_debayer(std::unordered_map<std::string, std::string> &args)
             std::vector<long> naxes_out = {fits_file.naxes[0], fits_file.naxes[1], 3};
             long nelem_out = naxes_out[0] * naxes_out[1] * 3;
 
-            std::vector<uint16_t> out_buffer = debayer_fits(fits_file);
+            std::vector<uint16_t> out_buffer = debayer.debayer_fits(fits_file);
 
             if (!out_buffer.empty())
             {
-                fs::path output_filename = output_dir / std::format("debayered_{}.fits", file_count);
-                file_count++;
+                fs::path output_filename = output_dir / ("debayered_" + dir_entry.path().filename().string());
                 std::string create_path = "!" + output_filename.string();
 
                 auto out_file = FitsFile(create_path, FitsFile::Mode::Create);
@@ -103,7 +77,6 @@ la_result run_debayer(std::unordered_map<std::string, std::string> &args)
                 out_file.writeComment("CPLANE1 = 'RED' / Color plane 1");
                 out_file.writeComment("CPLANE2 = 'GREEN' / Color plane 2");
                 out_file.writeComment("CPLANE3 = 'BLUE' / Color plane 3");
-
             }
         }
     }
@@ -111,7 +84,7 @@ la_result run_debayer(std::unordered_map<std::string, std::string> &args)
     return result;
 }
 
-std::vector<uint16_t> debayer_fits(FitsFile &file)
+std::vector<uint16_t> Debayer::debayer_fits(FitsFile &file)
 {
     // printf("FITS File Information:\n");
     // printf("------------------------\n");
@@ -128,6 +101,7 @@ std::vector<uint16_t> debayer_fits(FitsFile &file)
     if (!key_read)
     {
         std::println("Error: Could not read bayer pattern from FITS file {}!", file.name);
+        return {};
     }
 
     std::string bayer_pattern = *key_read;
@@ -152,11 +126,13 @@ std::vector<uint16_t> debayer_fits(FitsFile &file)
 
     if (image_data.empty())
     {
+        std::println(std::cerr, "Warning: debayer failed for {}, skipping.", file.name);
         return {};
     }
 
-    auto out_buffer = debayer_buffer_new_ushort(image_data.data(), (int *)&(file.naxes[0]), (int *)&(file.naxes[1]),
-                                                sensor_pat, file.bitpix);
+    int width = static_cast<int>(file.naxes[0]);
+    int height = static_cast<int>(file.naxes[1]);
+    auto out_buffer = debayer_buffer_new_ushort(image_data.data(), &width, &height, sensor_pat, file.bitpix);
 
     if (out_buffer.empty())
     {
@@ -167,7 +143,7 @@ std::vector<uint16_t> debayer_fits(FitsFile &file)
     return out_buffer;
 }
 
-void pattern_to_cfarray(sensor_pattern pattern, unsigned int cfarray[2][2])
+void Debayer::pattern_to_cfarray(sensor_pattern pattern, unsigned int cfarray[2][2])
 {
     switch (pattern)
     {
@@ -200,7 +176,7 @@ void pattern_to_cfarray(sensor_pattern pattern, unsigned int cfarray[2][2])
     }
 }
 
-static bool progress(double p)
+bool Debayer::progress(double p)
 {
     // p is [0, 1] progress of the debayer process
     return true;
@@ -211,7 +187,7 @@ static bool progress(double p)
  * @param f value to round
  * @return a truncated and rounded BYTE
  */
-uint8_t roundf_to_BYTE(float f)
+uint8_t Debayer::roundf_to_BYTE(float f)
 {
     if (f < 0.5f)
         return 0;
@@ -225,7 +201,7 @@ uint8_t roundf_to_BYTE(float f)
  * @param f value to round
  * @return a truncated and rounded WORD
  */
-uint16_t roundf_to_WORD(float f)
+uint16_t Debayer::roundf_to_WORD(float f)
 {
     uint16_t retval;
     if (f < 0.5f)
@@ -246,8 +222,8 @@ uint16_t roundf_to_WORD(float f)
 /**
     Function copied from the Siril project.
  */
-std::vector<uint16_t> debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sensor_pattern pattern,
-                                                int bit_depth)
+std::vector<uint16_t> Debayer::debayer_buffer_new_ushort(uint16_t *buf, int *width, int *height, sensor_pattern pattern,
+                                                         int bit_depth)
 {
     unsigned int cfarray[2][2];
     int i, rx = *width, ry = *height;
@@ -265,9 +241,8 @@ std::vector<uint16_t> debayer_buffer_new_ushort(uint16_t *buf, int *width, int *
         free(rawdata);
         return {};
     }
-    // TODO: vectorize!
-    for (j = 0; j < nbpixels; j++)
-        rawdata[0][j] = (float)buf[j];
+    
+    std::transform(buf, buf + nbpixels, rawdata[0], [](uint16_t v) { return static_cast<float>(v); });
 
     for (i = 1; i < ry; i++)
         rawdata[i] = rawdata[i - 1] + rx;

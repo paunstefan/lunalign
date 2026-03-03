@@ -6,9 +6,10 @@
 #include <iostream>
 #include <numeric>
 #include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+#include <optional>
 #include <print>
 #include <ranges>
 #include <set>
@@ -59,6 +60,7 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
     fs::create_directories(output_dir);
 
     std::set<ImageRating> images;
+    FrameEvaluation evaluator;
 
     for (auto const &dir_entry : std::filesystem::directory_iterator{input_dir})
     {
@@ -66,8 +68,11 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
         {
             auto fits_file = FitsFile(dir_entry.path(), FitsFile::Mode::ReadOnly);
 
-            float rating = rate_image(fits_file);
-            images.insert({dir_entry.path(), rating});
+            auto rating = evaluator.rate_image(fits_file);
+            if (rating.has_value())
+            {
+                images.insert({dir_entry.path(), rating.value()});
+            }
         }
     }
     std::println("Count: {}", images.size());
@@ -83,16 +88,10 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
         std::println("{}: {}", image.path.string(), image.rating);
     }
 
-    int copied = 0;
-    for (auto &image : images | std::views::reverse)
+    for (auto &image : images | std::views::reverse | std::views::take(images_to_save))
     {
         fs::path new_path = output_dir / image.path.filename();
         fs::copy_file(image.path, new_path, fs::copy_options::overwrite_existing);
-        copied++;
-        if (copied >= images_to_save)
-        {
-            break;
-        }
     }
 
     la_result result = la_result::Ok;
@@ -100,12 +99,12 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
     return result;
 }
 
-float rate_image(FitsFile &image)
+std::optional<float> FrameEvaluation::rate_image(FitsFile &image)
 {
     if (image.naxis != 3)
     {
         std::println(std::cerr, "Number of axes != 3");
-        return -1;
+        return std::nullopt;
     }
 
     int width = image.naxes[0];
@@ -115,7 +114,7 @@ float rate_image(FitsFile &image)
 
     if (green_layer.empty())
     {
-        return -1;
+        return std::nullopt;
     }
 
     cv::Mat imageMat(height, width, CV_16UC1, green_layer.data());
@@ -126,15 +125,13 @@ float rate_image(FitsFile &image)
 
     cv::GaussianBlur(imageMat, blurredMat, kernelSize, sigmaX);
 
-    uint16_t *p_start = (uint16_t *)blurredMat.datastart;
+    cv::Mat laplacianMat;
+    cv::Laplacian(blurredMat, laplacianMat, CV_32F);
 
-    uint16_t *p_end = (uint16_t *)blurredMat.dataend;
+    cv::Scalar mean, stddev;
+    cv::meanStdDev(laplacianMat, mean, stddev);
 
-    std::vector<uint16_t> blurredVector(p_start, p_end);
-
-    auto score = calculate_laplacian(image.naxes[0], image.naxes[1], blurredVector);
-
-    return score;
+    return static_cast<float>(stddev[0] * stddev[0]);
 }
 
 float calculate_laplacian(int width, int height, std::vector<uint16_t> &image_data)
@@ -144,7 +141,8 @@ float calculate_laplacian(int width, int height, std::vector<uint16_t> &image_da
         return -1;
     }
 
-    std::vector<float> laplacian_values((height - 2) * (width - 2));
+    std::vector<float> laplacian_values;
+    laplacian_values.reserve(((height - 2) * (width - 2)));
 
     for (int y = 1; y < height - 1; y++)
     {

@@ -21,6 +21,7 @@
 #include <print>
 #include <string>
 #include <utility>
+#include <opencv2/core/utils/logger.hpp>
 
 #include "commands.hpp"
 #include "result.hpp"
@@ -42,6 +43,8 @@ int main(int argc, const char *argv[])
         std::println("{}", helpstring);
         return 0;
     }
+
+    cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_ERROR);
 
     la_result result = la_result::Error;
     if (std::filesystem::is_regular_file(arg))
