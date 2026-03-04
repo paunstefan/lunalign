@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fitsio.h>
+#include <omp.h>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -23,6 +24,15 @@ la_result run_registration(std::unordered_map<std::string, std::string> &args)
     std::string reference_filename = args["reference"];
     fs::path output_dir = args["out"];
 
+    int rotation_option = std::stoi(args["rotation"]);
+    bool enable_rot = static_cast<bool>(rotation_option);
+
+    int scaling_option = std::stoi(args["scaling"]);
+    bool enable_scale = static_cast<bool>(rotation_option);
+
+    int highpass_option = std::stoi(args["highpass"]);
+    bool enable_highpass = static_cast<bool>(rotation_option);
+
     fs::path reference_file = input_dir / reference_filename;
 
     fs::create_directories(output_dir);
@@ -38,18 +48,20 @@ la_result run_registration(std::unordered_map<std::string, std::string> &args)
 
     auto image_mat = fits_ref.readToCvMat<uint16_t>();
 
-    FFTRegistration register_runner = FFTRegistration(image_mat,false,false,true);
+    FFTRegistration register_runner = FFTRegistration(image_mat, enable_rot, enable_scale, enable_highpass);
 
+#pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < static_cast<int>(fits_files.size()); ++i)
     {
         const auto &path = fits_files[i];
+        const auto &path_str = path.filename().string();
 
         auto fits_file = FitsFile(path, FitsFile::Mode::ReadOnly);
         auto image_mat = fits_file.readToCvMat<uint16_t>();
-        auto aligned = register_runner.align(image_mat);
+        auto aligned = register_runner.align(path_str, image_mat);
 
-        fs::path output_filename = output_dir / ("registered_" + path.filename().string());
-        std::println("Registered file: {}", path.filename().string());
+        fs::path output_filename = output_dir / ("registered_" + path_str);
+        std::println("Registered file: {}", path_str);
         std::string create_path = "!" + output_filename.string();
         auto out_file = FitsFile(create_path, FitsFile::Mode::Create);
         out_file.writeCvMat<uint16_t>(aligned);
@@ -163,6 +175,10 @@ cv::Mat FFTRegistration::computeMagnitudeSpectrum(const cv::Mat &img, int size) 
     cv::Mat mag;
     cv::magnitude(planes[0], planes[1], mag);
 
+    // This is the critical missing step.  Without it the polar image is
+    // dominated by the DC spike and has no usable high-freq content.
+    cv::log(mag + 1.0f, mag);
+
     // Shift quadrants so zero-frequency is centred
     int cx = mag.cols / 2, cy = mag.rows / 2;
     cv::Mat q0(mag, cv::Rect(0, 0, cx, cy));
@@ -181,20 +197,46 @@ cv::Mat FFTRegistration::computeMagnitudeSpectrum(const cv::Mat &img, int size) 
     return mag;
 }
 
+void FFTRegistration::buildPolarRemapTables(int size)
+{
+    polarMapX_ = cv::Mat(size, size, CV_32F);
+    polarMapY_ = cv::Mat(size, size, CV_32F);
+
+    float cx = size / 2.f;
+    float cy = size / 2.f;
+    float maxRadius = size / 2.f;
+
+    for (int row = 0; row < size; ++row)
+    {
+        // angle ∈ [0, π)  mapped linearly over rows — matches PixInsight's
+        // polarTransform(0, Math.PI).
+        float angle = static_cast<float>(CV_PI) * row / size;
+        float cosA = std::cos(angle);
+        float sinA = std::sin(angle);
+
+        for (int col = 0; col < size; ++col)
+        {
+            float radius;
+            if (enableScaling)
+            {
+                // Log-polar: col maps logarithmically to radius
+                radius = std::exp(static_cast<float>(col) * std::log(maxRadius) / size);
+            }
+            else
+            {
+                // Linear polar: col maps linearly to radius
+                radius = maxRadius * col / size;
+            }
+            polarMapX_.at<float>(row, col) = cx + radius * cosA;
+            polarMapY_.at<float>(row, col) = cy + radius * sinA;
+        }
+    }
+}
+
 cv::Mat FFTRegistration::toPolar(const cv::Mat &mag, int size) const
 {
-    cv::Point2f centre(size / 2.f, size / 2.f);
-    double maxRadius = size / 2.0;
-
-    int flags =
-        cv::INTER_LINEAR | cv::WARP_FILL_OUTLIERS | (enableScaling ? cv::WARP_POLAR_LOG : cv::WARP_POLAR_LINEAR);
-
     cv::Mat polar;
-    cv::warpPolar(mag, polar, cv::Size(size, size), centre, maxRadius, flags);
-
-    // Keep only top half (0..180°) – magnitude spectrum is symmetric
-    polar = polar(cv::Rect(0, 0, size, size / 2)).clone();
-    cv::resize(polar, polar, cv::Size(size, size), 0, 0, cv::INTER_LINEAR);
+    cv::remap(mag, polar, polarMapX_, polarMapY_, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0));
     cv::normalize(polar, polar, 0, 1, cv::NORM_MINMAX);
     return polar;
 }
@@ -257,12 +299,18 @@ double FFTRegistration::detectRotation(const cv::Mat &targetImg) const
     if (std::abs(d) > 1e-12)
         subY += 0.5 * ((double)yp - (double)yn) / d;
 
-    // Y → angle (0..180° mapped over full height)
+    // Y → angle: rows map to [0°, 180°)
     double angle = 180.0 * subY / h;
+
+    // Angles > 90° correspond to the wrapped (negative) direction.
+    // The result is the correction angle to apply directly via
+    // getRotationMatrix2D (positive = CCW in OpenCV).
     if (angle > 90.0)
-        angle = 180.0 - angle;
-    else
-        angle = -angle;
+        angle -= 180.0; // e.g. 170° → −10°
+    // else: small positive angle stays positive
+
+    // std::printf("  [rot detect] peak=(%d,%d)  subY=%.2f  angle=%+.3f°\n",
+    //             maxLoc.x, maxLoc.y, subY, angle);
 
     return angle;
 }
@@ -278,6 +326,10 @@ FFTRegistration::FFTRegistration(const cv::Mat &referenceImage, bool enableRotat
     if (enableRotation)
     {
         polarSize_ = cv::getOptimalDFTSize(std::max(refW_, refH_));
+
+        // Build the remap tables once (reused for every target)
+        buildPolarRemapTables(polarSize_);
+
         cv::Mat mag = computeMagnitudeSpectrum(refPrep_, polarSize_);
         cv::Mat pol = toPolar(mag, polarSize_);
 
@@ -301,7 +353,7 @@ RegistrationResult FFTRegistration::evaluate(const cv::Mat &targetImage) const
     if (enableRotation && std::abs(res.rotationAngleDeg) > 0.01)
     {
         cv::Point2f ctr(targetImage.cols / 2.f, targetImage.rows / 2.f);
-        cv::Mat M = cv::getRotationMatrix2D(ctr, res.rotationAngleDeg, 1.0);
+        cv::Mat M = cv::getRotationMatrix2D(ctr, -res.rotationAngleDeg, 1.0);
         cv::Mat rotated;
         cv::warpAffine(targetImage, rotated, M, targetImage.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
         tgtForTrans = preprocess(rotated);
@@ -320,7 +372,6 @@ RegistrationResult FFTRegistration::evaluate(const cv::Mat &targetImage) const
     cv::copyMakeBorder(tgtForTrans, tgtPad, 0, optH - tgtForTrans.rows, 0, optW - tgtForTrans.cols,
                        cv::BORDER_CONSTANT);
 
-    // cv::phaseCorrelate handles Hann windowing + sub-pixel internally
     cv::Mat hann;
     cv::createHanningWindow(hann, refPad.size(), CV_32F);
     cv::Point2d shift = cv::phaseCorrelate(refPad, tgtPad, hann);
@@ -330,16 +381,16 @@ RegistrationResult FFTRegistration::evaluate(const cv::Mat &targetImage) const
     return res;
 }
 
-cv::Mat FFTRegistration::align(const cv::Mat &targetImage) const
+cv::Mat FFTRegistration::align(const std::string &image_name, const cv::Mat &targetImage) const
 {
     RegistrationResult res = evaluate(targetImage);
 
-    std::printf("[FFTReg] dx=%+.2f  dy=%+.2f  rot=%+.3f°  scale=%.4f\n", res.dx, res.dy, res.rotationAngleDeg,
-                res.scalingRatio);
+    std::println("[FFTReg] {} dx={:.2f}  dy={:.2f} rot={:.2f}°  scale={:.2f}", image_name, res.dx, res.dy,
+                 res.rotationAngleDeg, res.scalingRatio);
 
     // Combined affine: rotate about centre, then translate
     cv::Point2f ctr(targetImage.cols / 2.f, targetImage.rows / 2.f);
-    cv::Mat M = cv::getRotationMatrix2D(ctr, res.rotationAngleDeg, 1.0);
+    cv::Mat M = cv::getRotationMatrix2D(ctr, -res.rotationAngleDeg, 1.0);
     M.at<double>(0, 2) -= res.dx;
     M.at<double>(1, 2) -= res.dy;
 

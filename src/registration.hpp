@@ -17,17 +17,20 @@ class FFTRegistration
   public:
     FFTRegistration(const cv::Mat &referenceImage, bool enableRotation, bool enableScaling, bool useHighpass);
     RegistrationResult evaluate(const cv::Mat &targetImage) const;
-    cv::Mat align(const cv::Mat &targetImage) const;
+    cv::Mat align(const std::string &image_name, const cv::Mat &targetImage) const;
 
   private:
-    bool enableRotation = false; // correct rotation (+ optional scaling)
-    bool enableScaling = false;  // correct scaling (requires enableRotation)
-    bool useHighpass = true;     // true  = highpass filter (better for moon)
-                                 // false = gradient magnitude (classic)
+    bool enableRotation = false;
+    bool enableScaling = false;
+    bool useHighpass = true;
+
     int refW_ = 0, refH_ = 0;
     cv::Mat refPrep_;     // preprocessed reference (for translation)
     cv::Mat refPolarFFT_; // DFT of polar magnitude  (for rotation)
     int polarSize_ = 0;
+
+    // Precomputed remap tables for the 0..180° polar transform
+    cv::Mat polarMapX_, polarMapY_;
 
     static cv::Mat toGray32F(const cv::Mat &src);
     cv::Mat preprocess(const cv::Mat &src) const;
@@ -37,6 +40,7 @@ class FFTRegistration
     double detectRotation(const cv::Mat &targetImg) const;
 
     static cv::Mat makeCPS(const cv::Mat &fftA, const cv::Mat &fftB);
+    void buildPolarRemapTables(int size);
 };
 
 la_result run_registration(std::unordered_map<std::string, std::string> &args);

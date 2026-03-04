@@ -29,7 +29,12 @@ const std::vector<Command> commands = {
      run_rate,
      "Rate the clarity of the images and copy the best ones."},
     {"register",
-     {{"in", true, ""}, {"reference", true, ""}, {"out", false, "process/registered"}},
+     {{"in", true, ""},
+      {"reference", true, ""},
+      {"out", false, "process/registered"},
+      {"rotation", false, "0"},
+      {"highpass", false, "1"},
+      {"scaling", false, "0"}},
      run_registration,
      "Regsiter the frames to a given reference frame."},
 };
