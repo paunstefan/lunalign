@@ -5,6 +5,11 @@
 #include <type_traits>
 #include <vector>
 
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+
 template <class> inline constexpr bool always_false = false;
 
 class FitsFile
@@ -81,6 +86,21 @@ class FitsFile
         return {datatype, bitpix};
     }
 
+    static int getCvType(const int fitsType)
+    {
+        int datatype;
+
+        switch (fitsType)
+        {
+        case TFLOAT:
+            return CV_32FC1;
+        case TUSHORT:
+            return CV_16UC1;
+        default:
+            return -1;
+        }
+    }
+
     template <typename T>
     la_result writeImage(const std::vector<T> &data, int naxis, std::vector<long> naxes, long long firstelem,
                          long long nelems)
@@ -149,6 +169,100 @@ class FitsFile
         }
 
         return result;
+    }
+
+    template <typename T> void writeCvMat(cv::Mat &mat)
+    {
+        int channels = mat.channels();
+        int rows = mat.rows;
+        int cols = mat.cols;
+
+        if (channels == 1)
+        {
+            // Ensure contiguous memory
+            if (!mat.isContinuous())
+                mat = mat.clone();
+
+            std::vector<T> data(mat.begin<T>(), mat.end<T>());
+
+            this->writePix<uint16_t>(data,
+                                     2,                        // naxis
+                                     {(long)cols, (long)rows}, // naxes: NAXIS1=cols, NAXIS2=rows
+                                     {1, 1},                   // firstpix
+                                     (long long)cols * rows);
+        }
+        else
+        {
+            // Split channels back into FITS band-sequential layout
+            std::vector<cv::Mat> planes;
+            cv::split(mat, planes);
+
+            long plane_size = (long)rows * cols;
+            std::vector<uint16_t> data(plane_size * channels);
+
+            for (int c = 0; c < channels; c++)
+            {
+                if (!planes[c].isContinuous())
+                    planes[c] = planes[c].clone();
+                std::memcpy(data.data() + c * plane_size, planes[c].data, plane_size * sizeof(T));
+            }
+            this->writePix<T>(data,
+                              3,                                        // naxis
+                              {(long)cols, (long)rows, (long)channels}, // NAXIS1, NAXIS2, NAXIS3
+                              {1, 1, 1}, (long long)plane_size * channels);
+        }
+            this->writeComment("CTYPE3 = 'RGB' / Color space");
+            this->writeComment("CPLANE1 = 'RED' / Color plane 1");
+            this->writeComment("CPLANE2 = 'GREEN' / Color plane 2");
+            this->writeComment("CPLANE3 = 'BLUE' / Color plane 3");
+    }
+
+    template <typename T> cv::Mat readToCvMat()
+    {
+        long nelements = this->naxes[0] * this->naxes[1];
+        if (this->naxis > 2)
+        {
+            nelements *= this->naxes[2];
+        }
+        std::vector<T> image_data(nelements);
+        const auto [datatype, bitpix] = getFitsTypes(image_data);
+        const auto cv_type = getCvType(datatype);
+
+
+        std::array<long, 3> firstpix = {1, 1, 1};
+        fits_read_pix(fptr, datatype, firstpix.data(), nelements, NULL, image_data.data(), NULL, &status);
+
+        if (status)
+        {
+            fits_report_error(stderr, status);
+            return {};
+        }
+
+        cv::Mat mat;
+
+        if (this->naxis > 2 && this->naxes[2] > 1)
+        {
+            int rows = this->naxes[1];
+            int cols = this->naxes[0];
+            int channels = this->naxes[2];
+            long plane_size = rows * cols;
+
+            std::vector<cv::Mat> planes;
+            for (int c = 0; c < channels; c++)
+            {
+                // Each plane is contiguous in memory for FITS (band-sequential)
+                cv::Mat plane(rows, cols, cv_type, image_data.data() + c * plane_size);
+                planes.push_back(plane.clone());
+            }
+            cv::merge(planes, mat);
+        }
+        else
+        {
+            mat = cv::Mat(this->naxes[1], this->naxes[0], cv_type, image_data.data()).clone();
+        }
+        // cv::flip(mat, mat, 0);
+
+        return mat;
     }
 
     std::optional<std::string> readKey(const std::string &key);

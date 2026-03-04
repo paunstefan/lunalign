@@ -2,6 +2,7 @@
 #include "debayer.hpp"
 #include "decode.hpp"
 #include "rate.hpp"
+#include "registration.hpp"
 #include "result.hpp"
 #include <algorithm>
 #include <chrono>
@@ -27,6 +28,10 @@ const std::vector<Command> commands = {
      {{"in", true, ""}, {"percent", true, ""}, {"out", false, "process/rating_out"}},
      run_rate,
      "Rate the clarity of the images and copy the best ones."},
+    {"register",
+     {{"in", true, ""}, {"reference", true, ""}, {"out", false, "process/registered"}},
+     run_registration,
+     "Regsiter the frames to a given reference frame."},
 };
 
 la_result process_commands(std::string script)
