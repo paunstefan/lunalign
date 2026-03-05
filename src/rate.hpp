@@ -1,5 +1,6 @@
 #pragma once
 #include "fits.hpp"
+#include "commands.hpp"
 #include "result.hpp"
 #include <string>
 #include <unordered_map>
@@ -14,4 +15,4 @@ class FrameEvaluation
     
 };
 
-la_result run_rate(std::unordered_map<std::string, std::string> &args);
+la_result run_rate(std::unordered_map<std::string, std::string> &args, PipelineContext &ctx);

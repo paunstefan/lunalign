@@ -1,5 +1,6 @@
 #pragma once
 #include "result.hpp"
+#include "commands.hpp"
 #include <opencv2/core.hpp>
 #include <string>
 #include <unordered_map>
@@ -43,4 +44,4 @@ class FFTRegistration
     void buildPolarRemapTables(int size);
 };
 
-la_result run_registration(std::unordered_map<std::string, std::string> &args);
+la_result run_registration(std::unordered_map<std::string, std::string> &args, PipelineContext &ctx);

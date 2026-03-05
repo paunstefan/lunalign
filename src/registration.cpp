@@ -18,7 +18,7 @@
 
 namespace fs = std::filesystem;
 
-la_result run_registration(std::unordered_map<std::string, std::string> &args)
+la_result run_registration(std::unordered_map<std::string, std::string> &args, PipelineContext &ctx)
 {
     fs::path input_dir = args["in"];
     std::string reference_filename = args["reference"];
@@ -41,9 +41,9 @@ la_result run_registration(std::unordered_map<std::string, std::string> &args)
 
     auto fits_ref = FitsFile(reference_file, FitsFile::Mode::ReadOnly);
 
-    auto image_mat = fits_ref.readToCvMat<uint16_t>();
+    auto image_mat_ref = fits_ref.readToCvMat<uint16_t>();
 
-    FFTRegistration register_runner = FFTRegistration(image_mat, enable_rot, enable_scale, enable_highpass);
+    FFTRegistration register_runner = FFTRegistration(image_mat_ref, enable_rot, enable_scale, enable_highpass);
 
 #pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < static_cast<int>(fits_files.size()); ++i)

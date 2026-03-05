@@ -1,5 +1,6 @@
 #pragma once
 #include "fits.hpp"
+#include "commands.hpp"
 #include "result.hpp"
 #include <string>
 #include <unordered_map>
@@ -42,4 +43,4 @@ class Debayer
     static bool progress(double p);
 };
 
-la_result run_debayer(std::unordered_map<std::string, std::string> &args);
+la_result run_debayer(std::unordered_map<std::string, std::string> &args, PipelineContext &ctx);

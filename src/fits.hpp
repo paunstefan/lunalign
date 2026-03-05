@@ -51,39 +51,39 @@ class FitsFile
 
     template <typename T> std::tuple<int, int> getFitsTypes(const std::vector<T> &data)
     {
-        int datatype, bitpix;
+        int datatype, bitpx;
 
         if constexpr (std::is_same_v<T, double>)
         {
             datatype = TDOUBLE;
-            bitpix = DOUBLE_IMG;
+            bitpx = DOUBLE_IMG;
         }
         else if constexpr (std::is_same_v<T, float>)
         {
             datatype = TFLOAT;
-            bitpix = FLOAT_IMG;
+            bitpx = FLOAT_IMG;
         }
         else if constexpr (std::is_same_v<T, uint32_t>)
         {
             datatype = TULONG;
-            bitpix = ULONG_IMG;
+            bitpx = ULONG_IMG;
         }
         else if constexpr (std::is_same_v<T, uint16_t>)
         {
             datatype = TUSHORT;
-            bitpix = USHORT_IMG;
+            bitpx = USHORT_IMG;
         }
         else if constexpr (std::is_same_v<T, uint8_t>)
         {
             datatype = TBYTE;
-            bitpix = BYTE_IMG;
+            bitpx = BYTE_IMG;
         }
         else
         {
             static_assert(always_false<T>, "Unsupported type for FITS write");
         }
 
-        return {datatype, bitpix};
+        return {datatype, bitpx};
     }
 
     static int getCvType(const int fitsType)
@@ -105,9 +105,9 @@ class FitsFile
     la_result writeImage(const std::vector<T> &data, int naxis, std::vector<long> naxes, long long firstelem,
                          long long nelems)
     {
-        const auto [datatype, bitpix] = getFitsTypes(data);
+        const auto [datatype, bitpx] = getFitsTypes(data);
 
-        this->bitpix = bitpix;
+        this->bitpix = bitpx;
         this->naxis = naxis;
         this->naxes = naxes;
 
@@ -132,9 +132,9 @@ class FitsFile
     la_result writePix(const std::vector<T> &data, int naxis, std::vector<long> naxes, std::vector<long> firstpix,
                        long long nelems)
     {
-        const auto [datatype, bitpix] = getFitsTypes(data);
+        const auto [datatype, bitpx] = getFitsTypes(data);
 
-        this->bitpix = bitpix;
+        this->bitpix = bitpx;
         this->naxis = naxis;
         this->naxes = naxes;
 
@@ -158,7 +158,7 @@ class FitsFile
     template <typename T> std::vector<T> readPix(std::vector<long> firstpix, long long nelems)
     {
         std::vector<T> result(nelems);
-        const auto [datatype, bitpix] = getFitsTypes(result);
+        const auto [datatype, bitpx] = getFitsTypes(result);
 
         fits_read_pix(fptr, datatype, firstpix.data(), nelems, NULL, result.data(), NULL, &status);
 
@@ -226,7 +226,7 @@ class FitsFile
             nelements *= this->naxes[2];
         }
         std::vector<T> image_data(nelements);
-        const auto [datatype, bitpix] = getFitsTypes(image_data);
+        const auto [datatype, bitpx] = getFitsTypes(image_data);
         const auto cv_type = getCvType(datatype);
 
         std::array<long, 3> firstpix = {1, 1, 1};

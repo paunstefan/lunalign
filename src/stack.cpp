@@ -15,8 +15,7 @@
 
 namespace fs = std::filesystem;
 
-
-la_result run_stack(std::unordered_map<std::string, std::string> &args)
+la_result run_stack(std::unordered_map<std::string, std::string> &args, PipelineContext &ctx)
 {
     fs::path input_dir = args["in"];
     fs::path output_path = args["out"];
@@ -59,30 +58,11 @@ la_result run_stack(std::unordered_map<std::string, std::string> &args)
         float weight = 1.0f;
         if (use_weights)
         {
-            // rate_image requires 3-axis color frames.
-            // For mono frames, compute Laplacian variance directly.
-            if (fits_file.naxis == 3)
+            FrameEvaluation evaluator;
+            auto rating = evaluator.rate_image(fits_file);
+            if (rating.has_value())
             {
-                FrameEvaluation evaluator;
-                auto rating = evaluator.rate_image(fits_file);
-                if (rating.has_value())
-                    weight = rating.value();
-            }
-            else
-            {
-                cv::Mat gray;
-                if (mat.channels() > 1)
-                    cv::cvtColor(mat, gray, cv::COLOR_BGR2GRAY);
-                else
-                    gray = mat;
-
-                cv::Mat blurred, lap;
-                cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 0);
-                cv::Laplacian(blurred, lap, CV_32F);
-
-                cv::Scalar mean, stddev;
-                cv::meanStdDev(lap, mean, stddev);
-                weight = static_cast<float>(stddev[0] * stddev[0]);
+                weight = rating.value();
             }
         }
 
@@ -111,7 +91,6 @@ la_result run_stack(std::unordered_map<std::string, std::string> &args)
     return la_result::Ok;
 }
 
-
 FrameStacker::FrameStacker(StackMethod method, float sigma, bool useWeights)
     : method_{method}, sigma_{sigma}, useWeights_{useWeights}
 {
@@ -121,9 +100,13 @@ bool FrameStacker::addFrame(const cv::Mat &frame, float weight)
 {
     cv::Mat f32;
     if (frame.depth() != CV_32F)
+    {
         frame.convertTo(f32, CV_32F);
+    }
     else
+    {
         f32 = frame.clone();
+    }
 
     // Validate dimensions match the first frame
     if (!frames_.empty())
@@ -141,7 +124,9 @@ bool FrameStacker::addFrame(const cv::Mat &frame, float weight)
 cv::Mat FrameStacker::stack() const
 {
     if (frames_.empty())
+    {
         return {};
+    }
 
     switch (method_)
     {
@@ -154,7 +139,6 @@ cv::Mat FrameStacker::stack() const
     }
     return {};
 }
-
 
 cv::Mat FrameStacker::stackMean() const
 {
@@ -172,7 +156,6 @@ cv::Mat FrameStacker::stackMean() const
     acc /= total_weight;
     return acc;
 }
-
 
 cv::Mat FrameStacker::stackMedian() const
 {
@@ -202,7 +185,6 @@ cv::Mat FrameStacker::stackMedian() const
     }
     return result;
 }
-
 
 cv::Mat FrameStacker::stackSigmaClip() const
 {
@@ -238,19 +220,25 @@ cv::Mat FrameStacker::stackSigmaClip() const
                 for (int pass = 0; pass < kClipPasses; ++pass)
                 {
                     if (kept < 3)
+                    {
                         break;
+                    }
 
                     // Weighted mean
                     float sum_w = 0.f, sum_wv = 0.f;
                     for (int f = 0; f < n; ++f)
                     {
                         if (!keep[f])
+                        {
                             continue;
+                        }
                         sum_wv += w[f] * vals[f];
                         sum_w += w[f];
                     }
                     if (sum_w == 0.f)
+                    {
                         break;
+                    }
                     float mean = sum_wv / sum_w;
 
                     // Standard deviation (unweighted for robust clipping)
@@ -258,14 +246,18 @@ cv::Mat FrameStacker::stackSigmaClip() const
                     for (int f = 0; f < n; ++f)
                     {
                         if (!keep[f])
+                        {
                             continue;
+                        }
                         float diff = vals[f] - mean;
                         sum_sq += diff * diff;
                     }
                     float stddev = std::sqrt(sum_sq / static_cast<float>(kept));
 
                     if (stddev < 1e-10f)
+                    {
                         break; // all values effectively identical
+                    }
 
                     float lo = mean - sigma_ * stddev;
                     float hi = mean + sigma_ * stddev;
@@ -284,7 +276,9 @@ cv::Mat FrameStacker::stackSigmaClip() const
                 for (int f = 0; f < n; ++f)
                 {
                     if (!keep[f])
+                    {
                         continue;
+                    }
                     sum_wv += w[f] * vals[f];
                     sum_w += w[f];
                 }

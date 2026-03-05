@@ -6,6 +6,8 @@
 
 #include "result.hpp"
 
+using PipelineContext = std::unordered_map<std::string, std::string>;
+
 struct ArgSpec {
     std::string name;
     bool required;
@@ -16,7 +18,7 @@ struct Command
 {
     std::string name;
     std::vector<ArgSpec> args;
-    std::function<la_result(std::unordered_map<std::string, std::string>&)> runner;
+    std::function<la_result(std::unordered_map<std::string, std::string>&, PipelineContext&)> runner;
     std::string help;
 };
 

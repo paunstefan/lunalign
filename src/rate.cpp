@@ -32,7 +32,7 @@ struct ImageRating
 float rate_image(FitsFile &image);
 float calculate_laplacian(int width, int height, std::vector<uint16_t> &image_data);
 
-la_result run_rate(std::unordered_map<std::string, std::string> &args)
+la_result run_rate(std::unordered_map<std::string, std::string> &args, PipelineContext &ctx)
 {
     fs::path input_dir = args["in"];
 
@@ -66,7 +66,7 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
         }
     }
 
-    std::println("\nFinished evaluating!\nCount: {}", images.size());
+    std::println("Finished evaluating!\nCount: {}", images.size());
 
     int images_to_save = static_cast<float>(images.size()) * (percentage / 100.0);
     if (images_to_save == 0)
@@ -93,6 +93,9 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
         fs::copy_file(image.path, new_path, fs::copy_options::overwrite_existing);
     }
 
+    auto &best = images.back();
+    ctx["best_frame"] = best.path.filename().string();
+
     la_result result = la_result::Ok;
 
     return result;
@@ -100,23 +103,25 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
 
 std::optional<float> FrameEvaluation::rate_image(FitsFile &image)
 {
-    if (image.naxis != 3)
-    {
-        std::println(std::cerr, "Number of axes != 3");
-        return std::nullopt;
-    }
 
     int width = image.naxes[0];
     int height = image.naxes[1];
 
-    std::vector<uint16_t> green_layer = image.readPix<uint16_t>({1, 1, 2}, width * height);
+    std::vector<uint16_t> mono_layer;
 
-    if (green_layer.empty())
+    if(image.naxis != 3){
+        mono_layer = image.readPix<uint16_t>({1, 1, 1}, width * height);
+    }
+    else {
+        mono_layer = image.readPix<uint16_t>({1, 1, 2}, width * height);
+    }
+
+    if (mono_layer.empty())
     {
         return std::nullopt;
     }
 
-    cv::Mat imageMat(height, width, CV_16UC1, green_layer.data());
+    cv::Mat imageMat(height, width, CV_16UC1, mono_layer.data());
 
     cv::Mat blurredMat;
     cv::Size kernelSize = cv::Size(5, 5);

@@ -13,7 +13,8 @@
 #include <string>
 #include <unordered_map>
 
-static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args);
+static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args,
+                             PipelineContext &ctx);
 static void insert_in_map(std::unordered_map<std::string, std::string> &map, const std::string &arg);
 
 const std::vector<Command> commands = {
@@ -26,12 +27,12 @@ const std::vector<Command> commands = {
      run_debayer,
      "Debayer a series of images into color FITS files."},
     {"rate",
-     {{"in", true, ""}, {"percent", true, ""}, {"out", false, "process/rating_out"}},
+     {{"in", true, ""}, {"percent", true, ""}, {"out", false, "process/rated"}},
      run_rate,
      "Rate the clarity of the images and copy the best ones."},
     {"register",
      {{"in", true, ""},
-      {"reference", true, ""},
+      {"reference", false, "$best_frame"},
       {"out", false, "process/registered"},
       {"rotation", false, "0"},
       {"highpass", false, "1"},
@@ -53,6 +54,7 @@ la_result process_commands(std::string script)
     std::stringstream command_stream(script);
     std::string command;
     char commands_del = ';';
+    PipelineContext ctx;
 
     while (getline(command_stream, command, commands_del))
     {
@@ -79,7 +81,7 @@ la_result process_commands(std::string script)
             }
         }
         std::println("{}: {}", command_name, args_map);
-        la_result result = mux_command(command_name, args_map);
+        la_result result = mux_command(command_name, args_map, ctx);
         if (result == la_result::Error)
         {
             return result;
@@ -88,7 +90,8 @@ la_result process_commands(std::string script)
     return la_result::Ok;
 }
 
-static la_result validate_and_run(const Command &cmd, std::unordered_map<std::string, std::string> &args)
+static la_result validate_and_run(const Command &cmd, std::unordered_map<std::string, std::string> &args,
+                                  PipelineContext &ctx)
 {
     for (const auto &spec : cmd.args)
     {
@@ -103,18 +106,36 @@ static la_result validate_and_run(const Command &cmd, std::unordered_map<std::st
         }
     }
 
+    for (auto &[key, value] : args)
+    {
+        if (value.starts_with("$"))
+        {
+            std::string var = value.substr(1);
+            if (auto it = ctx.find(var); it != ctx.end())
+            {
+                value = it->second;
+            }
+            else
+            {
+                std::println(std::cerr, "Error: '{}' references undefined variable '{}'.", key, var);
+                return la_result::Error;
+            }
+        }
+    }
+
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto result = cmd.runner(args);
+    auto result = cmd.runner(args, ctx);
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> elapsed = end - start;
-    std::println(std::cerr, "Elapsed time: {}ms", elapsed.count());
+    std::println(std::cerr, "Elapsed time: {}ms\n", elapsed.count());
 
     return result;
 }
 
-static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args)
+static la_result mux_command(const std::string &command, std::unordered_map<std::string, std::string> args,
+                             PipelineContext &ctx)
 {
 
     auto it = std::ranges::find_if(commands, [&](const Command &c) { return c.name == command; });
@@ -123,7 +144,7 @@ static la_result mux_command(const std::string &command, std::unordered_map<std:
         std::println(std::cerr, "Error: command '{}' not valid.", command);
         return la_result::Error;
     }
-    return validate_and_run(*it, args);
+    return validate_and_run(*it, args, ctx);
 }
 
 static void insert_in_map(std::unordered_map<std::string, std::string> &map, const std::string &arg)

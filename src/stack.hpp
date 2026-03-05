@@ -1,5 +1,6 @@
 #pragma once
 #include "fits.hpp"
+#include "commands.hpp"
 #include "result.hpp"
 #include <opencv2/core.hpp>
 #include <string>
@@ -38,4 +39,4 @@ class FrameStacker
     cv::Mat stackSigmaClip() const;
 };
 
-la_result run_stack(std::unordered_map<std::string, std::string> &args);
+la_result run_stack(std::unordered_map<std::string, std::string> &args, PipelineContext &ctx);

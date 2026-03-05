@@ -8,7 +8,7 @@
 
 namespace fs = std::filesystem;
 
-la_result run_decode(std::unordered_map<std::string, std::string> &args)
+la_result run_decode(std::unordered_map<std::string, std::string> &args, PipelineContext &ctx)
 {
     fs::path input_file = args["in"];
 

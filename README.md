@@ -44,9 +44,32 @@ A script file contains multiple commands separated by semicolons. For example, a
 decode -in=capture.ser -out=process/decoded;
 debayer -in=process/decoded -out=process/debayered;
 rate -in=process/debayered -percent=70 -out=process/rated;
-register -in=process/rated -reference=debayered_0001.fits -out=process/registered -rotation=1;
+register -in=process/rated -out=process/registered -rotation=1;
 stack -in=process/registered -out=result.fits -method=sigma -sigma=2.5
 ```
+
+Notice that the `register` command above does not specify `-reference`. It defaults to `$best_frame`, which is set automatically by the preceding `rate` command.
+
+### Pipeline variables
+
+Commands in a script share a pipeline context — a simple key-value store that lives for the duration of the script. A command can write a value into the context, and any later command can reference it with the `$variable` syntax.
+
+Any argument value that starts with `$` is resolved against the context before the command runs. If the variable has not been set by a previous command, the pipeline exits with an error.
+
+Currently defined variables:
+
+| Variable | Set by | Description |
+|----------|--------|-------------|
+| `best_frame` | `rate` | Filename of the highest-rated frame |
+
+For example, to explicitly reference a pipeline variable:
+
+```
+rate -in=process/debayered -percent=70 -out=process/rated;
+register -in=process/rated -reference=$best_frame -rotation=1
+```
+
+This is equivalent to omitting `-reference` entirely, since its default value is `$best_frame`.
 
 ### Commands
 
@@ -72,7 +95,7 @@ debayer -in=process/decoded -out=process/debayered
 | `-in` | yes | — | Input directory containing FITS files |
 | `-out` | no | `process/debayered` | Output directory |
 
-**rate** — Evaluate frame sharpness and copy the best percentage of frames. Uses Laplacian variance on the green channel as a quality metric.
+**rate** — Evaluate frame sharpness and copy the best percentage of frames. Uses Laplacian variance on the green channel as a quality metric. Sets the `best_frame` pipeline variable to the filename of the highest-rated frame.
 
 ```
 rate -in=process/debayered -percent=70 -out=process/rated
@@ -82,7 +105,7 @@ rate -in=process/debayered -percent=70 -out=process/rated
 |----------|----------|---------|-------------|
 | `-in` | yes | — | Input directory containing FITS files |
 | `-percent` | yes | — | Percentage of best frames to keep (e.g. `70`) |
-| `-out` | no | `process/rating_out` | Output directory for selected frames |
+| `-out` | no | `process/rated` | Output directory for selected frames |
 
 **register** — Align frames to a reference frame using FFT-based phase correlation. Supports optional rotation detection via log-polar transform.
 
@@ -93,7 +116,7 @@ register -in=process/rated -reference=debayered_0001.fits -out=process/registere
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `-in` | yes | — | Input directory containing FITS files |
-| `-reference` | yes | — | Filename of the reference frame (must be in the input directory) |
+| `-reference` | no | `$best_frame` | Filename of the reference frame (must be in the input directory). Defaults to the best frame from a preceding `rate` command. |
 | `-out` | no | `process/registered` | Output directory |
 | `-rotation` | no | `0` | Enable rotation correction (`1` = on, `0` = off) |
 | `-scaling` | no | `0` | Enable scale correction (`1` = on, `0` = off) |
