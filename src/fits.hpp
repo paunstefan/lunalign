@@ -185,11 +185,11 @@ class FitsFile
 
             std::vector<T> data(mat.begin<T>(), mat.end<T>());
 
-            this->writePix<uint16_t>(data,
-                                     2,                        // naxis
-                                     {(long)cols, (long)rows}, // naxes: NAXIS1=cols, NAXIS2=rows
-                                     {1, 1},                   // firstpix
-                                     (long long)cols * rows);
+            this->writePix<T>(data,
+                              2,                        // naxis
+                              {(long)cols, (long)rows}, // naxes: NAXIS1=cols, NAXIS2=rows
+                              {1, 1},                   // firstpix
+                              (long long)cols * rows);
         }
         else
         {
@@ -198,7 +198,7 @@ class FitsFile
             cv::split(mat, planes);
 
             long plane_size = (long)rows * cols;
-            std::vector<uint16_t> data(plane_size * channels);
+            std::vector<T> data(plane_size * channels);
 
             for (int c = 0; c < channels; c++)
             {
@@ -210,11 +210,12 @@ class FitsFile
                               3,                                        // naxis
                               {(long)cols, (long)rows, (long)channels}, // NAXIS1, NAXIS2, NAXIS3
                               {1, 1, 1}, (long long)plane_size * channels);
-        }
+
             this->writeComment("CTYPE3 = 'RGB' / Color space");
             this->writeComment("CPLANE1 = 'RED' / Color plane 1");
             this->writeComment("CPLANE2 = 'GREEN' / Color plane 2");
             this->writeComment("CPLANE3 = 'BLUE' / Color plane 3");
+        }
     }
 
     template <typename T> cv::Mat readToCvMat()
@@ -227,7 +228,6 @@ class FitsFile
         std::vector<T> image_data(nelements);
         const auto [datatype, bitpix] = getFitsTypes(image_data);
         const auto cv_type = getCvType(datatype);
-
 
         std::array<long, 3> firstpix = {1, 1, 1};
         fits_read_pix(fptr, datatype, firstpix.data(), nelements, NULL, image_data.data(), NULL, &status);

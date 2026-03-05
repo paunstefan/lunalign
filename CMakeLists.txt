@@ -34,6 +34,8 @@ set(SKIP_INSTALL_ALL ON CACHE BOOL "Skip install" FORCE)
 
 add_subdirectory(libs/cfitsio-cfitsio-4.6.2)
 
+target_compile_definitions(cfitsio PRIVATE _REENTRANT)
+
 target_include_directories(cfitsio PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libs/cfitsio-cfitsio-4.6.2>
 )

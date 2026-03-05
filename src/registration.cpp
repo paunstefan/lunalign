@@ -24,14 +24,9 @@ la_result run_registration(std::unordered_map<std::string, std::string> &args)
     std::string reference_filename = args["reference"];
     fs::path output_dir = args["out"];
 
-    int rotation_option = std::stoi(args["rotation"]);
-    bool enable_rot = static_cast<bool>(rotation_option);
-
-    int scaling_option = std::stoi(args["scaling"]);
-    bool enable_scale = static_cast<bool>(rotation_option);
-
-    int highpass_option = std::stoi(args["highpass"]);
-    bool enable_highpass = static_cast<bool>(rotation_option);
+    bool enable_rot = std::stoi(args["rotation"]) != 0;
+    bool enable_scale = std::stoi(args["scaling"]) != 0;
+    bool enable_highpass = std::stoi(args["highpass"]) != 0;
 
     fs::path reference_file = input_dir / reference_filename;
 

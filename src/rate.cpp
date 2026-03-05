@@ -74,7 +74,17 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args)
         images_to_save = 1;
     }
 
+    std::erase_if(images, [](const ImageRating &img) { return img.path.empty(); });
+
+    if (images.empty())
+    {
+        std::println("No images were successfully rated.");
+        return la_result::Error;
+    }
+
     std::println("Copying best rated frames:");
+
+    std::sort(images.begin(), images.end());
 
     for (auto &image : images | std::views::reverse | std::views::take(images_to_save))
     {

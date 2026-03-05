@@ -4,6 +4,7 @@
 #include "rate.hpp"
 #include "registration.hpp"
 #include "result.hpp"
+#include "stack.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -17,11 +18,11 @@ static void insert_in_map(std::unordered_map<std::string, std::string> &map, con
 
 const std::vector<Command> commands = {
     {"decode",
-     {{"in", true, ""}, {"out", false, "process/rating_out"}},
+     {{"in", true, ""}, {"out", false, "process/decoded"}},
      run_decode,
      "Decode a video file into FITS files."},
     {"debayer",
-     {{"in", true, ""}, {"out", false, "process/rating_out"}},
+     {{"in", true, ""}, {"out", false, "process/debayered"}},
      run_debayer,
      "Debayer a series of images into color FITS files."},
     {"rate",
@@ -37,6 +38,14 @@ const std::vector<Command> commands = {
       {"scaling", false, "0"}},
      run_registration,
      "Regsiter the frames to a given reference frame."},
+    {"stack",
+     {{"in", true, ""},
+      {"out", false, "process/stacked.fits"},
+      {"method", false, "sigma"},
+      {"sigma", false, "2.5"},
+      {"weighted", false, "0"}},
+     run_stack,
+     "Stack registered frames into a single image."},
 };
 
 la_result process_commands(std::string script)
