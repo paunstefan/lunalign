@@ -18,7 +18,7 @@ sudo apt install libomp-19-dev
 
 ```bash
 mkdir build && cd build
-cmake .. -DCMAKE_CXX_COMPILER=clang++-19
+cmake .. -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release
 make
 ```
 
