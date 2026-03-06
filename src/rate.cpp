@@ -53,7 +53,9 @@ la_result run_rate(std::unordered_map<std::string, std::string> &args, PipelineC
 
     std::vector<ImageRating> images(fits_files.size());
 
+#ifdef LUNALIGN_USE_OPENMP
 #pragma omp parallel for schedule(dynamic)
+#endif
     for (int i = 0; i < static_cast<int>(fits_files.size()); ++i)
     {
         auto fits_file = FitsFile(fits_files[i], FitsFile::Mode::ReadOnly);

@@ -6,12 +6,15 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <omp.h>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <print>
 #include <string>
 #include <vector>
+
+#ifdef LUNALIGN_USE_OPENMP
+#include <omp.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -166,11 +169,15 @@ cv::Mat FrameStacker::stackMedian() const
 
     cv::Mat result(rows, cols, frames_[0].type());
 
+#ifdef LUNALIGN_USE_OPENMP
 #pragma omp parallel
+#endif
     {
         std::vector<float> buf(n);
 
+#ifdef LUNALIGN_USE_OPENMP
 #pragma omp for schedule(dynamic)
+#endif
         for (int r = 0; r < rows; ++r)
         {
             for (int c = 0; c < cols * channels; ++c)
@@ -197,13 +204,17 @@ cv::Mat FrameStacker::stackSigmaClip() const
 
     constexpr int kClipPasses = 2;
 
+#ifdef LUNALIGN_USE_OPENMP
 #pragma omp parallel
+#endif
     {
         std::vector<float> vals(n);
         std::vector<float> w(n);
         std::vector<bool> keep(n);
 
+#ifdef LUNALIGN_USE_OPENMP
 #pragma omp for schedule(dynamic)
+#endif
         for (int r = 0; r < rows; ++r)
         {
             for (int c = 0; c < cols * channels; ++c)

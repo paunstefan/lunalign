@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <fitsio.h>
-#include <omp.h>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -15,6 +14,9 @@
 #include <vector>
 
 #include "fits.hpp"
+#ifdef LUNALIGN_USE_OPENMP
+#include <omp.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -45,7 +47,9 @@ la_result run_registration(std::unordered_map<std::string, std::string> &args, P
 
     FFTRegistration register_runner = FFTRegistration(image_mat_ref, enable_rot, enable_scale, enable_highpass);
 
+#ifdef LUNALIGN_USE_OPENMP
 #pragma omp parallel for schedule(dynamic)
+#endif
     for (int i = 0; i < static_cast<int>(fits_files.size()); ++i)
     {
         const auto &path = fits_files[i];

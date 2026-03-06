@@ -6,19 +6,22 @@ A command-line tool for processing lunar astrophotography. It handles the full p
 
 ### Prerequisites
 
-lunalign requires Clang 19 (or newer) with libc++ and OpenMP support.
+lunalign requires Clang 19 (or newer) with libc++ and optionally OpenMP support.
 
 ```bash
 sudo apt install clang-19
 sudo apt install libc++-19-dev libc++abi-19-dev
+
 sudo apt install libomp-19-dev
 ```
+
+OpenMP is strongly recommended, as the processing gets extremely slow without it.
 
 ### Compiling
 
 ```bash
 mkdir build && cd build
-cmake .. -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release
+cmake -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release -DLUNALIGN_USE_OPENMP=ON ..
 make
 ```
 
@@ -83,6 +86,8 @@ decode -in=capture.ser -out=process/decoded
 |----------|----------|---------|-------------|
 | `-in` | yes | — | Path to the input SER file |
 | `-out` | no | `process/decoded` | Output directory for FITS frames |
+
+This command was not tested thoroughly yet and may contain bugs. I recommend running lunalign directly on FITS files.
 
 **debayer** — Convert raw Bayer-pattern FITS frames into color (RGB) FITS files. The Bayer pattern is read from the `BAYERPAT` FITS header keyword.
 

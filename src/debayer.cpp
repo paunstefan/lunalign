@@ -30,7 +30,10 @@
 #include <vector>
 
 #include <fitsio.h>
+
+#ifdef LUNALIGN_USE_OPENMP
 #include <omp.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -51,8 +54,9 @@ la_result run_debayer(std::unordered_map<std::string, std::string> &args, Pipeli
         if (dir_entry.path().extension() == ".fits")
             fits_files.push_back(dir_entry.path());
     }
-
+#ifdef LUNALIGN_USE_OPENMP
 #pragma omp parallel for schedule(dynamic)
+#endif
     for (int i = 0; i < static_cast<int>(fits_files.size()); ++i)
     {
         const auto &path = fits_files[i];

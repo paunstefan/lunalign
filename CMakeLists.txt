@@ -18,8 +18,11 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_link_options($<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++>)
 endif()
 
-find_package(OpenMP REQUIRED)
+option(LUNALIGN_USE_OPENMP "Enable OpenMP parallelism" ON)
 
+if(LUNALIGN_USE_OPENMP)
+    find_package(OpenMP REQUIRED)
+endif()
 
 
 # --- 2. Configure & Build Dependencies ---
@@ -44,7 +47,7 @@ target_include_directories(cfitsio PUBLIC
 )
 
 # B. Configure librtprocess
-set(OPTION_OMP OFF CACHE BOOL "Disable OpenMP" FORCE)
+set(OPTION_OMP ${LUNALIGN_USE_OPENMP} CACHE BOOL "Enable OpenMP for librtprocess" FORCE)
 # Note: It will inherit the -stdlib=libc++ defined in section 1 automatically
 add_subdirectory(libs/librtprocess-0.12.0)
 
@@ -52,6 +55,7 @@ add_subdirectory(libs/librtprocess-0.12.0)
 # C. Configure OpenCV
 # Limit the build to only what you need to save massive amounts of compile time
 set(BUILD_LIST "core,imgproc,imgcodecs,highgui" CACHE STRING "Requested modules" FORCE)
+set(WITH_OPENMP ${LUNALIGN_USE_OPENMP} CACHE BOOL "Enable OpenMP for OpenCV" FORCE)
 set(WITH_ITT OFF CACHE BOOL "Disable ITT" FORCE)
 
 # Turn off extra OpenCV bloat
@@ -77,7 +81,9 @@ add_executable(lunalign ${SOURCE_FILES})
 
 # --- 4. Linking ---
 
-if(OpenMP_FOUND)
+if(LUNALIGN_USE_OPENMP AND OpenMP_FOUND)
+    target_compile_definitions(lunalign PRIVATE LUNALIGN_USE_OPENMP)
+    target_link_libraries(lunalign PRIVATE OpenMP::OpenMP_CXX)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         target_link_options(lunalign PRIVATE -static-libgomp)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -103,7 +109,6 @@ target_include_directories(lunalign PRIVATE
 )
 
 target_link_libraries(lunalign PRIVATE
-    OpenMP::OpenMP_CXX
     opencv_highgui
     opencv_imgcodecs
 
